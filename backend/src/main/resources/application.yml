@@ -1,0 +1,26 @@
+server:
+  port: ${PORT:8080}
+  forward-headers-strategy: framework
+  error:
+    include-message: never
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/feiras}
+    username: ${SPRING_DATASOURCE_USERNAME:feiras}
+    password: ${SPRING_DATASOURCE_PASSWORD:}
+    hikari:
+      maximum-pool-size: 8
+      minimum-idle: 1
+  flyway:
+    enabled: true
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+app:
+  secure-cookie: ${SECURE_COOKIE:true}
+  admin-email: ${ADMIN_EMAIL:}
+  admin-password: ${ADMIN_PASSWORD:}
+  registration-open: ${REGISTRATION_OPEN:true}
+logging:
+  level:
+    root: INFO

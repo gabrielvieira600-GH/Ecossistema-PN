@@ -1,0 +1,44 @@
+# Paid persistent resources. Review current charges in Render before deployment.
+services:
+  - type: web
+    name: navalshore-nn-portal
+    runtime: docker
+    plan: 1c-2g
+    region: ohio
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    envVars:
+      - key: PORT
+        value: "10000"
+      - key: SECURE_COOKIE
+        value: "true"
+      - key: REGISTRATION_OPEN
+        value: "true"
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: DATABASE_HOST
+        fromDatabase:
+          name: navalshore-nn-db
+          property: host
+      - key: DATABASE_NAME
+        fromDatabase:
+          name: navalshore-nn-db
+          property: database
+      - key: SPRING_DATASOURCE_USERNAME
+        fromDatabase:
+          name: navalshore-nn-db
+          property: user
+      - key: SPRING_DATASOURCE_PASSWORD
+        fromDatabase:
+          name: navalshore-nn-db
+          property: password
+databases:
+  - name: navalshore-nn-db
+    plan: 0.1c-256mb
+    region: ohio
+    databaseName: feiras
+    user: feiras
+    postgresMajorVersion: "17"
+    ipAllowList: []

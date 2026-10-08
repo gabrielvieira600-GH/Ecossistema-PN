@@ -1,0 +1,20 @@
+{
+  "checks": [
+    "Login administrativo",
+    "Mapa vitoria com 49 estandes",
+    "Mapa iara com 65 estandes",
+    "Mapa naval1 com 103 estandes",
+    "Mapa naval2 com 96 estandes",
+    "Expositor sem edição administrativa e API 403",
+    "Reserva pela interface",
+    "Liberação promove primeira empresa da fila",
+    "Contratação, aceite e comprovante pela interface",
+    "Cancelamento administrativo e comprovante restrito ao titular",
+    "Nome e fonte 9 persistidos no mapa operacional",
+    "União de vizinhos e liberação do conjunto pela interface",
+    "Criação e exclusão administrativas pela interface",
+    "Celular 390x844 sem transbordamento horizontal",
+    "Resposta atrasada descartada ao trocar de pavilhão"
+  ],
+  "errors": []
+}

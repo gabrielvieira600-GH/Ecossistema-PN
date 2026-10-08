@@ -1,0 +1,30 @@
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: feiras
+      POSTGRES_USER: feiras
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - database:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U feiras -d feiras"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  app:
+    build: .
+    ports: ["8080:8080"]
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/feiras
+      SPRING_DATASOURCE_USERNAME: feiras
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:?Set ADMIN_EMAIL}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD}
+      SECURE_COOKIE: "false"
+      PORT: "8080"
+volumes:
+  database:
