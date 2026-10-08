@@ -43,6 +43,14 @@ import {
 } from "./map-utils";
 import "./style.css";
 
+const PORTALS = [
+  { id: "portos", name: "Portos e Navios", subtitle: "Informação e conexões do setor", logo: "/brands/portos.png" },
+  { id: "navalshore", name: "Navalshore", subtitle: "Indústria naval e offshore", logo: "/brands/navalshore.jpg" },
+  { id: "nn", name: "NN Logística", subtitle: "Logística, transporte e negócios", logo: "/brands/nn.png" },
+];
+const portalName = (id) => PORTALS.find((p) => p.id === id)?.name || "Portal";
+const belongsToPortal = (f, id) => id === "navalshore" ? f.id.startsWith("naval") : id === "nn" ? f.id.startsWith("nn") : false;
+
 const IconButton = ({ title, children, ...props }) => (
   <button className="icon-btn" aria-label={title} title={title} {...props}>
     {children}
@@ -131,6 +139,7 @@ class Boundary extends React.Component {
 function App() {
   const [user, setUser] = useState(null),
     [loading, setLoading] = useState(true),
+    [portal, setPortal] = useState(null),
     [fairs, setFairs] = useState([]),
     [fair, setFair] = useState(null),
     [data, setData] = useState(null),
@@ -173,7 +182,7 @@ function App() {
   }
   useEffect(() => {
     api("/auth/me")
-      .then(setUser)
+      .then((u) => { setPortal(u.portal); setUser(u); })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
@@ -196,10 +205,10 @@ function App() {
     run(async () => {
       const [fs, ns] = await Promise.all([api("/fairs"), api("/notifications")]);
       if (activeUser.current !== uid) return;
-      setFairs(fs);
+      setFairs(fs.filter((f) => belongsToPortal(f, portal)));
       setNotifications(ns);
     });
-  }, [user?.id]);
+  }, [user?.id, portal]);
   useEffect(() => {
     if (!toast) return;
     const t = setTimeout(() => setToast(null), 7000);
@@ -218,7 +227,7 @@ function App() {
       data ? api("/pavilions/" + data.pavilion.id) : Promise.resolve(null),
     ]);
     if (epoch !== navigation.current || activeUser.current !== uid) return;
-    setFairs(fs);
+    setFairs(fs.filter((f) => belongsToPortal(f, portal)));
     if (fair) setFair(fs.find((f) => f.id === fair.id));
     if (next) {
       setData(next);
@@ -302,7 +311,9 @@ function App() {
       </div>
     );
   if (!user)
-    return <Login onLogin={setUser} run={run} busy={busy} toast={toast} />;
+    return <Login onLogin={(u) => { setPortal(u.portal); setUser(u); }} run={run} busy={busy} toast={toast} />;
+  if (portal === "portos")
+    return <PortosPlaceholder user={user} run={run} onLogout={() => { setUser(null); setPortal(null); }} />;
   return (
     <div className="app">
       <aside className="sidebar">
@@ -322,7 +333,7 @@ function App() {
           </span>
           <span>
             EXPO<span className="brand-light">PORTAL</span>
-            <small>Navalshore · NN Logística</small>
+            <small>{portalName(portal)}</small>
           </span>
         </a>
         <div className="workspace-label">ÁREA DO EXPOSITOR</div>
@@ -396,6 +407,7 @@ function App() {
               run(async () => {
                 await send("/auth/logout");
                 setUser(null);
+                setPortal(null);
                 setData(null);
                 setFair(null);
               })
@@ -433,7 +445,7 @@ function App() {
               sua participação.
             </p>
             <div className="fair-grid">
-              {fairs.map((f) => (
+              {fairs.filter((f) => belongsToPortal(f, portal)).map((f) => (
                 <article
                   className={
                     "fair-card " +
@@ -1179,113 +1191,69 @@ function App() {
 }
 
 function Login({ onLogin, run, busy, toast }) {
+  const [choice, setChoice] = useState(null);
   const [register, setRegister] = useState(false);
   const [success, setSuccess] = useState("");
+  function close() { if (!busy) { setChoice(null); setRegister(false); setSuccess(""); } }
   async function submit(e) {
     e.preventDefault();
-    const f = Object.fromEntries(new FormData(e.currentTarget));
+    const form = Object.fromEntries(new FormData(e.currentTarget));
     await run(async () => {
       if (register) {
-        const result = await send("/auth/register", f);
+        const result = await send("/auth/register", form);
         setSuccess(result.message);
         setRegister(false);
-      } else onLogin(await send("/auth/login", f));
+      } else {
+        onLogin(await send("/auth/login", { ...form, portal: choice.id }));
+      }
     });
   }
   return (
-    <div className="login-page">
-      <section className="login-art">
-        <div className="login-brand">
-          <Anchor size={29} /> EXPOPORTAL
+    <div className="portal-gateway">
+      <div className="gateway-orb orb-one" aria-hidden="true" />
+      <div className="gateway-orb orb-two" aria-hidden="true" />
+      <header className="gateway-header"><span className="gateway-mark"><Anchor size={25}/> ECOSSISTEMA <strong>PN</strong></span><span className="gateway-topnote">PORTAL INTEGRADO</span></header>
+      <main className="gateway-center">
+        <span className="gateway-eyebrow"><span className="gateway-dot"/> BEM-VINDO AO ECOSSISTEMA</span>
+        <h1>Conectando negócios.<br/><span>Escolha seu destino.</span></h1>
+        <p className="gateway-desc">Selecione a empresa que deseja acessar. Sua experiência será direcionada ao ambiente escolhido.</p>
+        <div className="portal-choices" aria-label="Escolha a empresa">
+          {PORTALS.map((p) => (
+            <button key={p.id} type="button" className="portal-choice" onClick={() => { setChoice(p); setRegister(false); setSuccess(""); }}>
+              <span className="portal-logo-wrap"><img src={p.logo} alt={"Logo " + p.name}/></span>
+              <span className="portal-choice-copy"><strong>{p.name}</strong><small>{p.subtitle}</small></span>
+              <span className="portal-choice-arrow"><ArrowRight size={20}/></span>
+            </button>
+          ))}
         </div>
-        <div>
-          <div className="eyebrow">NAVALSHORE · NN LOGÍSTICA</div>
-          <h1>
-            Grandes conexões.
-            <br />O espaço certo
-            <br />
-            para acontecer.
-          </h1>
-          <p>
-            O portal da sua participação nas feiras que conectam a indústria
-            naval e a logística.
-          </p>
-        </div>
-        <div className="login-footer">
-          PORTAL DO EXPOSITOR <span>EDIÇÃO 2027</span>
-        </div>
-        <Ship className="login-ship" size={420} strokeWidth={0.35} />
-      </section>
-      <section className="login-form">
-        <span className="mobile-brand">
-          <Anchor />
-          EXPOPORTAL
-        </span>
-        <span className="tag">BEM-VINDO AO PORTAL</span>
-        <h2>{register ? "Cadastre sua empresa" : "Acesse sua conta"}</h2>
-        <p>
-          {register
-            ? "O cadastro será aprovado pela organização."
-            : "Entre para explorar as plantas e gerenciar sua participação."}
-        </p>
-        {success && <div className="notice">{success}</div>}
-        <form onSubmit={submit}>
-          <Field
-            label="E-mail"
-            type="email"
-            name="email"
-            autoComplete="username"
-            placeholder="voce@empresa.com.br"
-            required
-            maxLength={254}
-          />
-          {register && (
-            <>
-              <Field label="Empresa" name="company" required maxLength={160} />
-              <Field label="Seu nome" name="contact" required maxLength={160} />
-              <Field label="Telefone" name="phone" type="tel" maxLength={40} />
-            </>
-          )}
-          <Field
-            label="Senha"
-            type="password"
-            name="password"
-            autoComplete={register ? "new-password" : "current-password"}
-            minLength={register ? 12 : undefined}
-            required
-            placeholder={register ? "Pelo menos 12 caracteres" : "Sua senha"}
-          />
-          <button className="button primary full" disabled={busy}>
-            {register ? "Solicitar cadastro" : "Entrar no portal"}
-            <ArrowRight size={18} />
-          </button>
-        </form>
-        {toast?.type === "error" && (
-          <p role="alert" className="form-error">
-            {toast.text}
-          </p>
-        )}
-        <button
-          className="text-btn login-switch"
-          onClick={() => {
-            setRegister(!register);
-            setSuccess("");
-          }}
-        >
-          {register
-            ? "Já tem uma conta? Entrar"
-            : "Primeiro acesso? Cadastre sua empresa"}
-        </button>
-        <p className="login-help">
-          Esqueceu a senha? Solicite a redefinição à organização da feira.
-        </p>
-        <div className="secure-note">
-          <ShieldCheck size={16} />
-          Acesso protegido para expositores e organização.
-        </div>
-      </section>
+        <span className="gateway-safe"><ShieldCheck size={16}/> Acesso seguro e individualizado para cada ambiente</span>
+      </main>
+      <footer className="gateway-footer"><span>© {new Date().getFullYear()} Ecossistema PN</span><span>Portos e Navios · Navalshore · NN Logística</span></footer>
+      {choice && (
+        <Modal title={"Acessar " + choice.name} onClose={close}>
+          <div className="portal-login-head"><img src={choice.logo} alt={"Logo " + choice.name}/><div><strong>{choice.name}</strong><span>Área de acesso {register ? "e cadastro" : "restrito"}</span></div></div>
+          <p className="portal-login-hint">{register ? "Solicite seu cadastro. A organização precisará aprová-lo." : "Entre com seus dados para continuar neste ambiente."}</p>
+          {success && <div className="notice">{success}</div>}
+          <form className="portal-login-form" onSubmit={submit}>
+            <Field label="E-mail" type="email" name="email" autoComplete="username" placeholder="voce@empresa.com.br" required maxLength={254}/>
+            {register && <><Field label="Empresa" name="company" required maxLength={160}/><Field label="Seu nome" name="contact" required maxLength={160}/><Field label="Telefone" name="phone" type="tel" maxLength={40}/></>}
+            <Field label="Senha" type="password" name="password" autoComplete={register ? "new-password" : "current-password"} minLength={register ? 12 : undefined} required placeholder={register ? "Pelo menos 12 caracteres" : "Sua senha"}/>
+            {toast?.type === "error" && <p role="alert" className="form-error">{toast.text}</p>}
+            <button type="submit" className="button primary full" disabled={busy}>{busy ? "Aguarde…" : register ? "Solicitar cadastro" : "Entrar em " + choice.name}<ArrowRight size={17}/></button>
+          </form>
+          <button type="button" className="text-btn login-switch" onClick={() => { setRegister(!register); setSuccess(""); }}>{register ? "Já tem conta? Fazer login" : "Primeiro acesso? Cadastre sua empresa"}</button>
+          <p className="login-help">Esqueceu sua senha? Entre em contato com a organização.</p>
+        </Modal>
+      )}
     </div>
   );
+}
+
+function PortosPlaceholder({user, run, onLogout}) {
+  return <div className="portos-page">
+    <header className="portos-header"><span className="gateway-mark"><Anchor size={23}/> ECOSSISTEMA <strong>PN</strong></span><button className="portos-logout" onClick={() => run(async () => { await send("/auth/logout"); onLogout(); })}><LogOut size={17}/> Sair</button></header>
+    <main className="portos-center"><div className="portos-badge"><img src="/brands/portos.png" alt="Portos e Navios"/></div><span className="gateway-eyebrow">PORTOS E NAVIOS</span><h1>Estamos preparando<br/>algo especial.</h1><p>A área da Portos e Navios está <strong>em implantação</strong>. Em breve você encontrará aqui os recursos exclusivos da empresa.</p><div className="portos-status"><span className="gateway-dot"/> Módulo em implantação</div><span className="portos-welcome">Sessão de {user.contact} · Ambiente Portos e Navios</span></main>
+  </div>;
 }
 
 function MapCanvas({
