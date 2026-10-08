@@ -46,7 +46,9 @@ public class Auth {
       @NotBlank @Size(max = 160) String contact,
       @Size(max = 40) String phone) {}
 
-  public record Login(@Email @NotBlank String email, @NotBlank String password) {}
+  public record Login(@Email @NotBlank String email, @NotBlank String password, String portal) {
+    public Login(String email, String password) { this(email, password, "navalshore"); }
+  }
 
   private final Db db;
   private final PasswordEncoder passwords;
@@ -149,6 +151,8 @@ public class Auth {
   }
 
   public User login(Login r, String ip, HttpServletResponse response) {
+    if (!Set.of("portos", "navalshore", "nn").contains(r.portal()))
+      throw error(HttpStatus.BAD_REQUEST, "Selecione uma empresa para entrar.");
     String email = r.email().trim().toLowerCase(Locale.ROOT);
     throttle("login-ip:" + ip, 40);
     throttle("login-email:" + email, 12);
@@ -162,10 +166,11 @@ public class Auth {
       throw error(HttpStatus.FORBIDDEN, "Seu cadastro aguarda aprovação da organização.");
     String t = token();
     db.sql.update(
-        "INSERT INTO auth_session(token_hash,user_id,expires_at) VALUES(?,?,?)",
+        "INSERT INTO auth_session(token_hash,user_id,expires_at,portal) VALUES(?,?,?,?)",
         digest(t),
         u.id(),
-        Timestamp.from(Instant.now().plusSeconds(30L * 86400)));
+        Timestamp.from(Instant.now().plusSeconds(30L * 86400)),
+        r.portal());
     cookie(response, t, 30L * 86400);
     db.audit(u.email(), "LOGIN", u.id(), Map.of());
     return u;
@@ -198,10 +203,49 @@ public class Auth {
     var rows =
         db.sql.queryForList(
             "SELECT u.* FROM auth_session s JOIN app_user u ON u.id=s.user_id WHERE s.token_hash=?"
-                + " AND s.expires_at>? AND u.enabled=TRUE",
+                + " AND s.expires_at>? AND s.portal IS NOT NULL AND u.enabled=TRUE",
             digest(token),
             now());
     return rows.isEmpty() ? null : user(rows.get(0));
+  }
+
+  public String portal(HttpServletRequest request) {
+    String token = cookieToken(request);
+    if (token == null) throw error(HttpStatus.UNAUTHORIZED, "Entre para continuar.");
+    var rows = db.sql.queryForList(
+        "SELECT portal FROM auth_session WHERE token_hash=? AND expires_at>?", digest(token), now());
+    if (rows.isEmpty() || rows.get(0).get("portal") == null)
+      throw error(HttpStatus.UNAUTHORIZED, "Escolha uma empresa e entre novamente.");
+    return (String) rows.get(0).get("portal");
+  }
+
+  public String fair(HttpServletRequest req) {
+    String portal = portal(req);
+    if (portal.equals("portos"))
+      throw error(HttpStatus.FORBIDDEN, "Módulo Portos e Navios em implantação.");
+    return portal.equals("navalshore") ? "navalshore-2027" : "nn-2027";
+  }
+
+  public void requireFair(HttpServletRequest req, String fairId) {
+    if (!fair(req).equals(fairId))
+      throw error(HttpStatus.FORBIDDEN, "Recurso de outra empresa.");
+  }
+
+  public void requirePavilion(HttpServletRequest req, String id) {
+    requireFair(req, (String) db.one("SELECT fair_id FROM pavilion WHERE id=?", id).get("fair_id"));
+  }
+
+  public void requireBooth(HttpServletRequest req, String id) {
+    requireFair(req, db.fairOf(id));
+  }
+
+  public void requireOrder(HttpServletRequest req, String id) {
+    requireFair(req, (String) db.one("SELECT fair_id FROM contract_order WHERE id=?", id).get("fair_id"));
+  }
+
+  public void requireSelection(HttpServletRequest req, Collection<String> ids) {
+    if (ids == null || ids.isEmpty()) throw error(HttpStatus.BAD_REQUEST, "Selecione um estande.");
+    for (String id : ids) requireBooth(req, id);
   }
 
   public void logout(HttpServletRequest r, HttpServletResponse response) {
