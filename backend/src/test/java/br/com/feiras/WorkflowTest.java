@@ -11,6 +11,7 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.*;
+import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -18,6 +19,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.web.server.ResponseStatusException;
 
 @SpringBootTest(
@@ -238,20 +240,27 @@ class WorkflowTest {
 
   @Test
   void apiEnforcesRoleCsrfAndOwnContractAccess() throws Exception {
-    var exhibitor =
-        new UsernamePasswordAuthenticationToken(
-            u, null, List.of(new SimpleGrantedAuthority("ROLE_EXHIBITOR")));
-    mvc.perform(get("/api/admin/users").with(authentication(exhibitor)))
+    // The portal-aware endpoints require a REAL auth_session cookie. A mocked
+    // Spring Security principal alone no longer represents a logged-in user.
+    db.sql.update("UPDATE pavilion SET fair_id='navalshore-2027' WHERE id=?", pavilion);
+    db.sql.update("UPDATE fair SET published=TRUE WHERE id='navalshore-2027'");
+    var response = new MockHttpServletResponse();
+    auth.login(new Auth.Login(u.email(), "test-password-very-strong", "navalshore"),
+        "127.0.0.1", response);
+    String token = response.getHeader("Set-Cookie").split(";", 2)[0].split("=", 2)[1];
+    var sessionCookie = new Cookie("FEIRA_SESSION", token);
+
+    mvc.perform(get("/api/admin/users").cookie(sessionCookie))
         .andExpect(status().isForbidden());
     mvc.perform(
             post("/api/reserve")
-                .with(authentication(exhibitor))
+                .cookie(sessionCookie)
                 .contentType("application/json")
                 .content(db.encode(selection(a))))
         .andExpect(status().isForbidden());
     mvc.perform(
             post("/api/reserve")
-                .with(authentication(exhibitor))
+                .cookie(sessionCookie)
                 .with(csrf())
                 .contentType("application/json")
                 .content(db.encode(selection(a))))
