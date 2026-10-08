@@ -24,7 +24,14 @@ public class Commerce {
       Map<String, Long> versions,
       boolean assembly,
       String quoteHash,
-      boolean acceptTerms) {}
+      boolean acceptTerms,
+      Integer lot,
+      Boolean pavilionItems,
+      Map<String,Integer> extras) {
+    public Selection(List<String> ids, Map<String,Long> versions, boolean assembly, String quoteHash, boolean acceptTerms) {
+      this(ids, versions, assembly, quoteHash, acceptTerms, null, null, null);
+    }
+  }
 
   private List<Map<String, Object>> select(Selection request) {
     if (request.ids() == null
@@ -70,7 +77,7 @@ public class Commerce {
   }
 
   public Map<String, Object> quoteData(
-      List<Map<String, Object>> booths, boolean assembly, Auth.User user) {
+      List<Map<String, Object>> booths, Selection request, Auth.User user) {
     String fairId = db.fairOf((String) booths.get(0).get("id"));
     var fair = db.one("SELECT * FROM fair WHERE id=?", fairId);
     var pavilion = db.one("SELECT * FROM pavilion WHERE id=?", booths.get(0).get("pavilion_id"));
@@ -87,14 +94,75 @@ public class Commerce {
       item.put("version", b.get("version"));
       items.add(item);
     }
-    BigDecimal space = money(area.multiply(decimal(fair, "rate"))),
-        mounting =
-            assembly
-                ? money(area.multiply(decimal(fair, "assembly_rate")))
-                : new BigDecimal("0.00"),
-        fee = decimal(fair, "fixed_fee");
-    BigDecimal subtotal = space.add(mounting).add(fee),
-        tax = money(subtotal.multiply(decimal(fair, "tax_percent")).divide(new BigDecimal("100")));
+    if (area.compareTo(new BigDecimal("20")) > 0 && request.assembly())
+      throw error(HttpStatus.BAD_REQUEST,"Montagem básica indisponível acima de 20 m².");
+    // Compatibility with existing integrations and historic automated workflow tests.
+    if (request.lot() == null) {
+      BigDecimal legacySpace = money(area.multiply(decimal(fair,"rate")));
+      BigDecimal legacyMounting = request.assembly() ? money(area.multiply(decimal(fair,"assembly_rate"))) : BigDecimal.ZERO;
+      BigDecimal legacyFee = decimal(fair,"fixed_fee");
+      BigDecimal legacyTax = money(legacySpace.add(legacyMounting).add(legacyFee)
+          .multiply(decimal(fair,"tax_percent")).divide(new BigDecimal("100")));
+      var legacy = new LinkedHashMap<String,Object>();
+      legacy.put("fair",fair.get("name")); legacy.put("fairId",fairId);
+      legacy.put("pavilion",pavilion.get("name")); legacy.put("company",user.company());
+      legacy.put("userId",user.id()); legacy.put("items",items); legacy.put("area",area);
+      legacy.put("rate",fair.get("rate")); legacy.put("space",legacySpace);
+      legacy.put("assemblyRate",fair.get("assembly_rate")); legacy.put("assembly",request.assembly());
+      legacy.put("mounting",legacyMounting); legacy.put("fee",legacyFee);
+      legacy.put("taxPercent",fair.get("tax_percent")); legacy.put("tax",legacyTax);
+      legacy.put("total",legacySpace.add(legacyMounting).add(legacyFee).add(legacyTax));
+      legacy.put("terms",fair.get("terms")); legacy.put("fairVersion",fair.get("version"));
+      legacy.put("ready",ready); legacy.put("reserveHours",fair.get("reserve_hours"));
+      legacy.put("hash",Auth.digest(db.encode(legacy)));
+      return legacy;
+    }
+    int lot = request.lot() == null ? 1 : request.lot();
+    if (lot < 0 || lot > 3) throw error(HttpStatus.BAD_REQUEST,"Lote inválido.");
+    BigDecimal rate = new BigDecimal(new int[]{1449,1510,1574,1638}[lot]);
+    boolean pavilion = area.compareTo(new BigDecimal("20")) > 0 || Boolean.TRUE.equals(request.pavilionItems());
+    boolean assembly = request.assembly();
+    if (area.compareTo(new BigDecimal("20")) > 0 && assembly)
+      throw error(HttpStatus.BAD_REQUEST, "Montagem básica indisponível para estandes acima de 20 m².");
+    int extinguisher = area.divide(new BigDecimal("25"),0,RoundingMode.CEILING).intValue();
+    var extras = request.extras() == null ? Map.<String,Integer>of() : request.extras();
+    Map<String,String> names = Map.ofEntries(
+      Map.entry("corners","Adicional por esquina"), Map.entry("energy","Energia do estande (KVA)"),
+      Map.entry("energyExtra","Energia adicional"), Map.entry("sponsorship","Patrocínio a combinar"),
+      Map.entry("doorDeposit","Depósito com porta"), Map.entry("signage","Logomarca na planta"),
+      Map.entry("palette","Palestra · 40 min"), Map.entry("social","Redes sociais da Navalshore"),
+      Map.entry("cord","Cordão de crachá"), Map.entry("video","Vídeo · totens LED"),
+      Map.entry("qr","Coletor QR Codes"), Map.entry("totem","Logomarca em dois totens"));
+    Map<String,Integer> prices = new LinkedHashMap<>();
+    prices.put("corners",308); prices.put("energy",681);
+    prices.put("energyExtra",526); prices.put("sponsorship",0);
+    prices.put("doorDeposit",567); prices.put("signage",1008);
+    prices.put("palette",1442); prices.put("social",1640);
+    prices.put("cord",1888); prices.put("video",1717);
+    prices.put("qr",446); prices.put("totem",4480);
+    for (var key : extras.keySet()) if (!prices.containsKey(key) && !key.equals("extinguisher"))
+      throw error(HttpStatus.BAD_REQUEST,"Item adicional inválido.");
+    List<Map<String,Object>> lines = new ArrayList<>();
+    BigDecimal space = money(area.multiply(rate));
+    lines.add(Map.of("label","Área livre · Lote "+lot,"total",space));
+    BigDecimal mounting = assembly ? money(area.multiply(new BigDecimal("332"))) : BigDecimal.ZERO;
+    if (assembly) lines.add(Map.of("label","Montagem básica","total",mounting));
+    BigDecimal pavilionTotal = pavilion ? money(area.multiply(new BigDecimal("67"))) : BigDecimal.ZERO;
+    if (pavilion) lines.add(Map.of("label","Itens de pavilhão","total",pavilionTotal));
+    BigDecimal extinct = new BigDecimal(extinguisher*227);
+    lines.add(Map.of("label","Extintores obrigatórios ("+extinguisher+")","total",extinct));
+    BigDecimal additional=BigDecimal.ZERO;
+    for (var entry : prices.entrySet()) {
+      int units=extras.getOrDefault(entry.getKey(),entry.getKey().equals("energy")?1:0);
+      if(units<0 || units>1000 || (entry.getKey().equals("energy") && units<1))
+        throw error(HttpStatus.BAD_REQUEST,"Quantidade adicional inválida.");
+      BigDecimal value=new BigDecimal(entry.getValue()).multiply(new BigDecimal(units));
+      if(units>0) lines.add(Map.of("label",names.get(entry.getKey())+" ("+units+")","total",value));
+      additional=additional.add(value);
+    }
+    BigDecimal fee=BigDecimal.ZERO;
+    BigDecimal subtotal = space.add(mounting).add(pavilionTotal).add(extinct).add(additional);
+    BigDecimal tax=BigDecimal.ZERO;
     var quote = new LinkedHashMap<String, Object>();
     quote.put("fair", fair.get("name"));
     quote.put("fairId", fairId);
@@ -103,9 +171,13 @@ public class Commerce {
     quote.put("userId", user.id());
     quote.put("items", items);
     quote.put("area", area);
-    quote.put("rate", fair.get("rate"));
+    quote.put("rate", rate);
+    quote.put("lot",lot);
+    quote.put("pavilionItems",pavilion);
+    quote.put("lines",lines);
+    quote.put("extras",extras);
     quote.put("space", space);
-    quote.put("assemblyRate", fair.get("assembly_rate"));
+    quote.put("assemblyRate", new BigDecimal("332"));
     quote.put("assembly", assembly);
     quote.put("mounting", mounting);
     quote.put("fee", fee);
@@ -122,7 +194,7 @@ public class Commerce {
 
   @Transactional
   public Map<String, Object> quote(Selection request, Auth.User user) {
-    return quoteData(select(request), request.assembly(), user);
+    return quoteData(select(request), request, user);
   }
 
   private void sellable(List<Map<String, Object>> booths) {
@@ -198,7 +270,7 @@ public class Commerce {
       if (!b.get("status").equals("AVAILABLE")
           && !(b.get("status").equals("RESERVED") && user.id().equals(b.get("owner_id"))))
         throw error(HttpStatus.CONFLICT, "Um estande não está disponível para você.");
-    var quote = quoteData(booths, request.assembly(), user);
+    var quote = quoteData(booths, request, user);
     if (!Boolean.TRUE.equals(quote.get("ready")))
       throw error(HttpStatus.CONFLICT, "Preços e planta precisam estar publicados e conferidos.");
     if (!request.acceptTerms() || !Objects.equals(quote.get("hash"), request.quoteHash()))
