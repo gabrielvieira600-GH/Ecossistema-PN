@@ -42,11 +42,14 @@ import {
   statusNames,
 } from "./map-utils";
 import "./style.css";
+import portosLogo from "./assets/portos.png";
+import navalLogo from "./assets/navalshore.jpg";
+import nnLogo from "./assets/nn.png";
 
 const PORTALS = [
-  { id: "portos", name: "Portos e Navios", subtitle: "Informação e conexões do setor", logo: "/brands/portos.png" },
-  { id: "navalshore", name: "Navalshore", subtitle: "Indústria naval e offshore", logo: "/brands/navalshore.jpg" },
-  { id: "nn", name: "NN Logística", subtitle: "Logística, transporte e negócios", logo: "/brands/nn.png" },
+  { id: "portos", name: "Portos e Navios", subtitle: "Informação e conexões do setor", logo: portosLogo },
+  { id: "navalshore", name: "Navalshore", subtitle: "Indústria naval e offshore", logo: navalLogo },
+  { id: "nn", name: "NN Logística", subtitle: "Logística, transporte e negócios", logo: nnLogo },
 ];
 const portalName = (id) => PORTALS.find((p) => p.id === id)?.name || "Portal";
 const belongsToPortal = (f, id) => id === "navalshore" ? f.id.startsWith("naval") : id === "nn" ? f.id.startsWith("nn") : false;
@@ -289,6 +292,7 @@ function App() {
   }
   function pick(b, multi = false) {
     const group = expandGroup(b, currentBooths);
+    if (!multi && !editMode && group.every(x => x.status === "AVAILABLE" || (x.mine && x.status === "RESERVED"))) setModal({ type: "budget" });
     setSelected((prev) =>
       multi
         ? prev.some((p) => p.id === b.id)
@@ -316,7 +320,8 @@ function App() {
     return <PortosPlaceholder user={user} run={run} onLogout={() => { setUser(null); setPortal(null); }} />;
   return (
     <div className="app">
-      <aside className="sidebar">
+      <main>
+        <header className="topbar horizon-topbar">      <nav className="horizon-nav" aria-label="Navegação do portal">
         <a
           className="brand"
           href="#"
@@ -336,7 +341,7 @@ function App() {
             <small>{portalName(portal)}</small>
           </span>
         </a>
-        <div className="workspace-label">ÁREA DO EXPOSITOR</div>
+        
         <button
           className={
             "nav-item " + (page === "home" || page === "map" ? "active" : "")
@@ -380,7 +385,7 @@ function App() {
         </button>
         {admin && (
           <>
-            <div className="workspace-label">ORGANIZAÇÃO</div>
+            
             <button
               className="nav-item"
               onClick={() => setModal({ type: "admin" })}
@@ -416,25 +421,7 @@ function App() {
             <LogOut size={17} />
           </IconButton>
         </div>
-      </aside>
-      <main>
-        <header className="topbar">
-          <span>
-            <span className="muted">Portal do Expositor</span>
-            {fair && (
-              <>
-                {" "}
-                <ChevronRight size={14} /> <strong>{fair.name}</strong>
-              </>
-            )}
-          </span>
-          <div className="topbar-right">
-            <span className="connection">
-              <i />
-              Conectado
-            </span>
-            <span className="top-avatar">{user.contact.slice(0, 1)}</span>
-          </div>
+      </nav>
         </header>
         {page === "home" && (
           <div className="page home">
@@ -794,18 +781,12 @@ function App() {
                     <button
                       className="button secondary full"
                       disabled={busy}
-                      onClick={() =>
-                        run(async () =>
-                          setQuote(
-                            await send("/quote", selection(selected, assembly)),
-                          ),
-                        )
-                      }
+                      onClick={() => setModal({ type: "budget" })}
                     >
                       <FileText size={16} />
                       Ver orçamento completo
                     </button>
-                    {quote && <Quote quote={quote} />}
+
                     {selected.every((b) => b.status === "AVAILABLE") && (
                       <button
                         className="button primary full"
@@ -1046,6 +1027,15 @@ function App() {
           )}
         </Modal>
       )}
+      {modal?.type === "budget" && (
+        <BudgetModal
+          selected={selected}
+          busy={busy}
+          onClose={() => setModal(null)}
+          onContract={(q, options) => { setModal({ type: "contract", quote: q, options }); }}
+          onError={(err) => message(err.message, "error")}
+        />
+      )}
       {modal?.type === "reserveConfirm" && (
         <Modal title="Confirmar reserva" onClose={() => setModal(null)}>
           <p>
@@ -1101,7 +1091,10 @@ function App() {
           onConfirm={() =>
             run(async () => {
               const result = await send("/contract", {
-                ...selection(selected, assembly),
+                ...selection(selected, Boolean(modal.options?.assembly)),
+                lot: modal.options?.lot ?? 1,
+                pavilionItems: Boolean(modal.options?.pavilionItems),
+                extras: modal.options?.extras || {},
                 quoteHash: modal.quote.hash,
                 acceptTerms: true,
               });
@@ -1252,7 +1245,7 @@ function Login({ onLogin, run, busy, toast }) {
 function PortosPlaceholder({user, run, onLogout}) {
   return <div className="portos-page">
     <header className="portos-header"><span className="gateway-mark"><Anchor size={23}/> ECOSSISTEMA <strong>PN</strong></span><button className="portos-logout" onClick={() => run(async () => { await send("/auth/logout"); onLogout(); })}><LogOut size={17}/> Sair</button></header>
-    <main className="portos-center"><div className="portos-badge"><img src="/brands/portos.png" alt="Portos e Navios"/></div><span className="gateway-eyebrow">PORTOS E NAVIOS</span><h1>Estamos preparando<br/>algo especial.</h1><p>A área da Portos e Navios está <strong>em implantação</strong>. Em breve você encontrará aqui os recursos exclusivos da empresa.</p><div className="portos-status"><span className="gateway-dot"/> Módulo em implantação</div><span className="portos-welcome">Sessão de {user.contact} · Ambiente Portos e Navios</span></main>
+    <main className="portos-center"><div className="portos-badge"><img src={portosLogo} alt="Portos e Navios"/></div><span className="gateway-eyebrow">PORTOS E NAVIOS</span><h1>Estamos preparando<br/>algo especial.</h1><p>A área da Portos e Navios está <strong>em implantação</strong>. Em breve você encontrará aqui os recursos exclusivos da empresa.</p><div className="portos-status"><span className="gateway-dot"/> Módulo em implantação</div><span className="portos-welcome">Sessão de {user.contact} · Ambiente Portos e Navios</span></main>
   </div>;
 }
 
@@ -1495,6 +1488,56 @@ function MapCanvas({
       )}
     </>
   );
+}
+
+const BUDGET_EXTRAS = [
+  {key:"energyExtra",label:"Energia adicional (KVA)",price:526},
+  {key:"sponsorship",label:"Patrocínio (a combinar)",price:0},
+  {key:"doorDeposit",label:"Depósito com porta",price:567},
+  {key:"signage",label:"Logomarca na planta",price:1008},
+  {key:"palette",label:"Palestra (40 min)",price:1442},
+  {key:"social",label:"Redes sociais da Navalshore",price:1640},
+  {key:"cord",label:"Cordão do crachá · 3.000 un.",price:1888},
+  {key:"video",label:"Vídeo randômico · 4 totens de LED",price:1717},
+  {key:"qr",label:"Coletor de QR Codes",price:446},
+  {key:"totem",label:"Logomarca em dois totens",price:4480},
+];
+const RATE_OPTIONS = [1449,1510,1574,1638];
+function BudgetModal({ selected, busy, onClose, onContract, onError }) {
+  const area = selected.reduce((v,b)=>v + Number(b.area||0),0);
+  const mandatoryPavilion = area > 20;
+  const extinguisherMin = Math.ceil(area/25);
+  const [lot,setLot] = useState(1);
+  const [pavilionItems,setPavilionItems] = useState(mandatoryPavilion);
+  const [assembly,setAssembly] = useState(false);
+  const [extras,setExtras] = useState({extinguisher:extinguisherMin,energy:1,corners:0});
+  const [q,setQ] = useState(null);
+  const [waiting,setWaiting] = useState(false);
+  const update = (key,n) => {setQ(null);setExtras(e=>({...e,[key]:Math.max(0,Math.min(1000,Number(n)||0))}));};
+  const options = { lot,pavilionItems:pavilionItems||mandatoryPavilion,assembly:!mandatoryPavilion&&assembly, extras};
+  async function calculate(contract=false){
+    setWaiting(true);
+    try {const response=await send("/quote",{...selection(selected,options.assembly),...options});setQ(response);if(contract)onContract(response,options);}catch(err){onError(err);}finally{setWaiting(false);}
+  }
+  useEffect(()=>{calculate();},[lot,pavilionItems,assembly,JSON.stringify(extras)]);
+  const preview=area*RATE_OPTIONS[lot]+(pavilionItems||mandatoryPavilion?area*67:0)+(assembly&&!mandatoryPavilion?area*332:0)+Math.ceil(area/25)*227;
+  return <Modal title="Simulador de orçamento" wide onClose={onClose}>
+    <div className="budget-head"><div><span>PROPOSTA COMERCIAL</span><h2>{selected.map(b=>b.code).join(' + ')}</h2><p>{area.toLocaleString('pt-BR')} m² · {selected.length} estande(s)</p></div><div className="budget-head-price"><small>Total calculado</small><strong>{q?money(q.total):money(preview)}</strong></div></div>
+    <div className="budget-cols">
+      <section className="budget-section"><h3>01 · Lote de contratação</h3><label className="field">Selecione o lote<select value={lot} onChange={e=>{setQ(null);setLot(+e.target.value)}}>{RATE_OPTIONS.map((rate,i)=><option key={i} value={i}>Lote {i}{i===0?' · Renovação':''} — {money(rate)}/m²</option>)}</select></label><p className="muted">Lote 0 destinado a renovações; confirme elegibilidade com a organização.</p>
+      <h3>02 · Itens obrigatórios</h3><label className="budget-check"><input type="checkbox" checked={pavilionItems||mandatoryPavilion} disabled={mandatoryPavilion} onChange={e=>{setPavilionItems(e.target.checked);setQ(null)}}/> Itens de pavilhão · {money(67)}/m² {mandatoryPavilion&&<small>Obrigatório acima de 20m²</small>}</label>
+      <label className="budget-check"><input type="checkbox" checked={assembly&&!mandatoryPavilion} disabled={mandatoryPavilion} onChange={e=>{setAssembly(e.target.checked);setQ(null)}}/> Montagem básica · {money(332)}/m² {mandatoryPavilion&&<small>Indisponível acima de 20m²</small>}</label>
+      <div className="budget-row"><div>Extintores de incêndio <small>Mínimo: 1 por 25 m²</small></div><strong>{extinguisherMin} × {money(227)}</strong></div>
+      <div className="budget-row"><label>Adicional por esquina · {money(308)}<input type="number" min="0" max="1000" value={extras.corners||0} onChange={e=>update('corners',e.target.value)}/></label></div>
+      <div className="budget-row"><label>Energia do estande (KVA) · {money(681)}<input type="number" min="1" max="1000" value={extras.energy??1} onChange={e=>update('energy',Math.max(1,+e.target.value))}/></label></div>
+      </section>
+      <section className="budget-section"><h3>03 · Itens adicionais</h3><div className="budget-extras">{BUDGET_EXTRAS.map(item=><label key={item.key} className="budget-row"><span>{item.label}<small>{item.price?money(item.price)+' / un.':'Valor mediante negociação'}</small></span><input aria-label={item.label} type="number" min="0" max="1000" value={extras[item.key]||0} onChange={e=>update(item.key,e.target.value)}/></label>)}</div></section>
+    </div>
+    <div className="budget-summary"><div><strong>Orçamento detalhado</strong><small>{q?'Valores validados pelo servidor':'Calculando valores…'}</small></div>{q&&<><div className="budget-summary-items">{q.lines?.map((line,i)=><div key={i}><span>{line.label}</span><strong>{money(line.total)}</strong></div>)}</div><strong className="budget-total">{money(q.total)}</strong></>}</div>
+    {!q?.ready&&<p className="notice">O estande precisa estar verificado e a comercialização publicada para contratar.</p>}
+    <button className="button primary full" disabled={busy||waiting||!q?.ready||selected.some(b=>!['AVAILABLE','RESERVED'].includes(b.status))} onClick={()=>calculate(true)}>Concordar com o orçamento e continuar para contratação <ArrowRight size={17}/></button>
+    <p className="muted">A contratação efetiva só é registrada após a confirmação e aceite das condições no próximo passo.</p>
+  </Modal>;
 }
 
 function Quote({ quote }) {
