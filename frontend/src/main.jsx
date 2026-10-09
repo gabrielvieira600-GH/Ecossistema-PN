@@ -292,7 +292,7 @@ function App() {
   }
   function pick(b, multi = false) {
     const group = expandGroup(b, currentBooths);
-    if (!multi && !editMode && group.every(x => x.status === "AVAILABLE" || (x.mine && x.status === "RESERVED"))) setModal({ type: "budget" });
+    if (!multi && !editMode) setModal({ type: "budget", booths: group });
     setSelected((prev) =>
       multi
         ? prev.some((p) => p.id === b.id)
@@ -781,7 +781,7 @@ function App() {
                     <button
                       className="button secondary full"
                       disabled={busy}
-                      onClick={() => setModal({ type: "budget" })}
+                      onClick={() => setModal({ type: "budget", booths: selected })}
                     >
                       <FileText size={16} />
                       Ver orçamento completo
@@ -790,36 +790,18 @@ function App() {
                     {selected.every((b) => b.status === "AVAILABLE") && (
                       <button
                         className="button primary full"
-                        disabled={busy || !data.pavilion.reviewed || !fair?.published}
-                        onClick={() => setModal({ type: "reserveConfirm" })}
+                        disabled={busy}
+                        onClick={() => setModal({ type: "budget", booths: selected })}
                       >
                         Reservar{" "}
                         {selected.length > 1 ? "e unir estandes" : "estande"}
                         <ArrowRight size={16} />
                       </button>
                     )}
-                    {selected.every(
-                      (b) =>
-                        b.status === "AVAILABLE" ||
-                        (b.mine && b.status === "RESERVED"),
-                    ) && (
-                      <button
-                        className="button contract full"
-                        disabled={
-                          busy || !data.pavilion.reviewed || !fair?.published
-                        }
-                        onClick={() =>
-                          run(async () => {
-                            const q = await send(
-                              "/quote",
-                              selection(selected, assembly),
-                            );
-                            setQuote(q);
-                            setModal({ type: "contract", quote: q });
-                          })
-                        }
-                      >
-                        Contratar agora
+                    {selected.every(b => b.status === "AVAILABLE" || (b.mine && b.status === "RESERVED")) && (
+                      <button className="button contract full" disabled={busy}
+                        onClick={() => setModal({type:"budget",booths:selected})}>
+                        Contratar agora <ArrowRight size={16}/>
                       </button>
                     )}
                     {selected.length > 1 &&
@@ -1029,10 +1011,10 @@ function App() {
       )}
       {modal?.type === "budget" && (
         <BudgetModal
-          selected={selected}
+          selected={modal.booths || selected}
           busy={busy}
           onClose={() => setModal(null)}
-          onContract={(q, options) => { setModal({ type: "contract", quote: q, options }); }}
+          onContract={(q, options) => { setModal({ type: "commercialWizard", quote: q, options, booths: modal.booths || selected, occupied: (modal.booths || selected).some(b => b.status !== "AVAILABLE" && !b.mine) }); }}
           onError={(err) => message(err.message, "error")}
         />
       )}
@@ -1083,27 +1065,32 @@ function App() {
           </button>
         </Modal>
       )}
-      {modal?.type === "contract" && (
-        <ContractModal
-          quote={modal.quote}
-          busy={busy}
+      {modal?.type === "commercialWizard" && (
+        <CommercialWizard quote={modal.quote} options={modal.options}
+          booths={modal.booths} occupied={modal.occupied} busy={busy}
           onClose={() => setModal(null)}
-          onConfirm={() =>
-            run(async () => {
-              const result = await send("/contract", {
-                ...selection(selected, Boolean(modal.options?.assembly)),
-                lot: modal.options?.lot ?? 1,
-                pavilionItems: Boolean(modal.options?.pavilionItems),
-                extras: modal.options?.extras || {},
-                quoteHash: modal.quote.hash,
-                acceptTerms: true,
-              });
-              const receipt = await api("/orders/" + result.id);
-              await refresh();
-              setModal({ type: "receipt", order: receipt });
-            }, "Contratação registrada com sucesso.")
-          }
-        />
+          onSubmit={async (payment, contractData) => {
+            const req = {
+              selection: {...selection(modal.booths, Boolean(modal.options?.assembly)),
+                lot:modal.options?.lot ?? 1, pavilionItems: Boolean(modal.options?.pavilionItems),
+                extras:modal.options?.extras || {},quoteHash:modal.quote.hash,acceptTerms:true},
+              requestType:modal.occupied?"WAITLIST":"CONTRACT",
+              payment:modal.occupied?null:payment,contractData,
+            };
+            const result=await send("/commercial-requests",req);
+            setModal({type:"commercialSent",result,company:portalName(portal)});
+            try { await refresh(); } catch (_) { /* The request was saved successfully. */ }
+          }}/>
+      )}
+      {modal?.type === "commercialSent" && (
+        <Modal title="Pedido recebido" onClose={() => setModal(null)}>
+          <div className="request-complete"><Check size={40}/><h2>Solicitação registrada</h2>
+            <p>{modal.result.message}</p>
+            <p className="muted">Número de protocolo: <strong>{modal.result.id}</strong></p>
+            {!modal.result.emailSent && <div className="notice">O envio de e-mail está pendente. Configure RESEND_API_KEY e COMMERCIAL_EMAIL_FROM no Render. O pedido ficou gravado no banco.</div>}
+          </div>
+          <button className="button primary full" onClick={() => setModal(null)}>Concluir</button>
+        </Modal>
       )}
       {modal?.type === "receipt" && (
         <Modal
@@ -1504,6 +1491,7 @@ const BUDGET_EXTRAS = [
 ];
 const RATE_OPTIONS = [1449,1510,1574,1638];
 function BudgetModal({ selected, busy, onClose, onContract, onError }) {
+  const occupied = selected.some(b => b.status !== "AVAILABLE" && !b.mine);
   const area = selected.reduce((v,b)=>v + Number(b.area||0),0);
   const mandatoryPavilion = area > 20;
   const extinguisherMin = Math.ceil(area/25);
@@ -1534,9 +1522,9 @@ function BudgetModal({ selected, busy, onClose, onContract, onError }) {
       <section className="budget-section"><h3>03 · Itens adicionais</h3><div className="budget-extras">{BUDGET_EXTRAS.map(item=><label key={item.key} className="budget-row"><span>{item.label}<small>{item.price?money(item.price)+' / un.':'Valor mediante negociação'}</small></span><input aria-label={item.label} type="number" min="0" max="1000" value={extras[item.key]||0} onChange={e=>update(item.key,e.target.value)}/></label>)}</div></section>
     </div>
     <div className="budget-summary"><div><strong>Orçamento detalhado</strong><small>{q?'Valores validados pelo servidor':'Calculando valores…'}</small></div>{q&&<><div className="budget-summary-items">{q.lines?.map((line,i)=><div key={i}><span>{line.label}</span><strong>{money(line.total)}</strong></div>)}</div><strong className="budget-total">{money(q.total)}</strong></>}</div>
-    {!q?.ready&&<p className="notice">O estande precisa estar verificado e a comercialização publicada para contratar.</p>}
-    <button className="button primary full" disabled={busy||waiting||!q?.ready||selected.some(b=>!['AVAILABLE','RESERVED'].includes(b.status))} onClick={()=>calculate(true)}>Concordar com o orçamento e continuar para contratação <ArrowRight size={17}/></button>
-    <p className="muted">A contratação efetiva só é registrada após a confirmação e aceite das condições no próximo passo.</p>
+    {!q?.ready&&<p className="notice">Orçamento sujeito à conferência comercial: a planta ou os preços ainda não estão publicados. O pedido não formaliza uma venda.</p>}
+    <button className="button primary full" disabled={busy||waiting||!q || selected.some(b=>!b.area)} onClick={()=>calculate(true)}>{occupied?"Concordar com o orçamento e entrar para a fila de espera":"Concordar com o orçamento e continuar para a contratação"} <ArrowRight size={17}/></button>
+    <p className="muted">A solicitação será encaminhada para análise. Nenhum pagamento será cobrado nesta etapa.</p>
   </Modal>;
 }
 
@@ -1581,6 +1569,65 @@ function Quote({ quote }) {
     </div>
   );
 }
+function CommercialWizard({quote,options,booths,occupied,busy,onClose,onSubmit}) {
+  const [step,setStep]=useState(occupied?2:1);
+  const [payment,setPayment]=useState({type:"CASH",dueDay:5,installments:2,twentyPercentNow:false,installmentsFromJanuary:false,customTerms:""});
+  const [mode,setMode]=useState("SAME"),[changes,setChanges]=useState("");
+  const [details,setDetails]=useState({}),[accepted,setAccepted]=useState(false),[submitting,setSubmitting]=useState(false),[error,setError]=useState("");
+  const isNaval=String(quote.fairId||"").startsWith("naval");
+  const deadline=isNaval?"25/07/2027":"25/03/2027";
+  const updatePayment=(key,val)=>setPayment(p=>({...p,[key]:val}));
+  const fields=[
+    ["company","Razão social"],["tradeName","Nome fantasia"],["taxId","CNPJ"],
+    ["stateRegistration","Inscrição estadual"],["contact","Contato principal"],
+    ["email","E-mail corporativo"],["phone","Telefone/WhatsApp"],
+    ["address","Endereço e número"],["addressExtra","Complemento"],["district","Bairro"],
+    ["city","Cidade"],["state","Estado"],["postalCode","CEP"],
+    ["signatory","Responsável pela assinatura do contrato"],["signatoryEmail","E-mail do assinante"],
+    ["signatoryRole","Cargo do assinante"],["financialContact","Responsável financeiro"],
+    ["financialEmail","E-mail financeiro"],["boothContact","Responsável pelo estande"],
+    ["boothEmail","E-mail responsável pelo estande"]];
+  const required=["company","taxId","contact","email","phone","address","city","state","postalCode","signatory","financialContact","boothContact"];
+  const validNew=required.every(k=>String(details[k]||"").trim());
+  const validData=mode==="SAME" || (mode==="CHANGE"&&changes.trim().length>0) || (mode==="NEW"&&validNew);
+  const validPayment=payment.type==="NEGOTIATE"?payment.customTerms.trim().length>0 :
+    [5,10,15,20,25].includes(Number(payment.dueDay)) && (payment.type==="CASH" || (payment.installments>=2 && payment.installments<=36));
+  async function submit(){
+    setSubmitting(true);setError("");
+    try {await onSubmit(occupied?null:payment,{mode,changes:mode==="CHANGE"?changes:"",newExhibitor:mode==="NEW"?details:{}});}
+    catch(e){setError(e.message||"Não foi possível enviar o pedido.");}
+    finally {setSubmitting(false);}
+  }
+  return <Modal title={occupied?"Solicitação de fila de espera":"Pedido de contratação"} wide onClose={onClose}>
+    <div className="commercial-progress"><span className={step===1?"current":""}>1 · Pagamento</span><span className={step===2?"current":""}>2 · Dados contratuais</span><span>3 · Envio</span></div>
+    <div className="commercial-intro"><strong>{quote.fair} · {booths.map(x=>x.code).join(" + ")}</strong><span>{money(quote.total)}</span></div>
+    {step===1 && <section className="commercial-step"><h3>Escolha suas condições de pagamento</h3>
+      <p className="muted">Último vencimento permitido: <strong>{deadline}</strong>. Sujeito à aprovação comercial.</p>
+      <label className="field">Condição<select value={payment.type} onChange={e=>updatePayment("type",e.target.value)}>
+        <option value="CASH">À vista</option><option value="INSTALLMENTS">Parcelado</option><option value="NEGOTIATE">Outras condições a negociar</option></select></label>
+      {payment.type!=="NEGOTIATE"&&<><label className="field">Melhor dia de vencimento<select value={payment.dueDay} onChange={e=>updatePayment("dueDay",+e.target.value)}>{[5,10,15,20,25].map(d=><option key={d} value={d}>Dia {d}</option>)}</select></label>
+        {payment.type==="INSTALLMENTS"&&<label className="field">Quantidade de parcelas<input type="number" min="2" max="36" value={payment.installments} onChange={e=>updatePayment("installments",+e.target.value)}/></label>}
+        <label className="check"><input type="checkbox" checked={payment.twentyPercentNow} onChange={e=>updatePayment("twentyPercentNow",e.target.checked)}/>Pagar 20% agora e o saldo a partir de janeiro de 2027</label>
+        {payment.twentyPercentNow && <label className="check"><input type="checkbox" checked={payment.installmentsFromJanuary} onChange={e=>updatePayment("installmentsFromJanuary",e.target.checked)}/>Parcelar o saldo a partir de janeiro (respeitando o prazo final)</label>}
+        {payment.twentyPercentNow&&<p className="muted">Entrada estimada: {money(Number(quote.total)*.2)} · Saldo estimado: {money(Number(quote.total)*.8)}</p>}
+      </>}
+      {payment.type==="NEGOTIATE"&&<label className="field">Descreva sua proposta<textarea rows="5" maxLength="4000" value={payment.customTerms} onChange={e=>updatePayment("customTerms",e.target.value)} placeholder="Descreva as condições que deseja negociar com o comercial"/></label>}
+      <button className="button primary full" disabled={!validPayment} onClick={()=>setStep(2)}>Continuar para os dados contratuais <ArrowRight size={16}/></button>
+    </section>}
+    {step===2 && <section className="commercial-step"><h3>Verificação de dados para o contrato</h3>
+      {[["SAME","Confirmo que todos os dados para elaboração do contrato são os mesmos da edição anterior, incluindo responsável pela assinatura, responsável financeiro e responsável pelo estande"],
+      ["CHANGE","Alterar dados do contrato"],["NEW","Sou um novo expositor"]].map(([key,label])=><label className="commercial-option" key={key}><input type="radio" name="contractDataMode" checked={mode===key} onChange={()=>setMode(key)}/><span>{label}</span></label>)}
+      {mode==="CHANGE"&&<label className="field">Quais dados devem ser alterados?<textarea rows="6" maxLength="10000" value={changes} onChange={e=>setChanges(e.target.value)} placeholder="Informe os dados atuais, os dados novos e os responsáveis, como em um e-mail para o comercial."/></label>}
+      {mode==="NEW"&&<><p className="muted">Preencha os dados do expositor. Os campos marcados com * são obrigatórios.</p><div className="commercial-fields">{fields.map(([key,label])=><label className="field" key={key}>{label}{required.includes(key)?" *":""}<input value={details[key]||""} maxLength="240" onChange={e=>setDetails(d=>({...d,[key]:e.target.value}))}/></label>)}</div>
+        <p className="notice">O formulário externo da Portos e Navios ainda precisa ser conferido campo a campo para garantir correspondência integral.</p></>}
+      <label className="check"><input type="checkbox" checked={accepted} onChange={e=>setAccepted(e.target.checked)}/>Confirmo que as informações prestadas estão corretas e solicito análise comercial. Estou ciente de que isto não efetua pagamento nem conclui contrato.</label>
+      {error&&<div className="notice" role="alert">{error}</div>}
+      <div className="commercial-buttons">{!occupied&&<button className="button secondary" onClick={()=>setStep(1)}>Voltar</button>}
+        <button className="button primary" disabled={!accepted||!validData||busy||submitting} onClick={submit}>{submitting?"Enviando pedido…":occupied?"Enviar pedido de fila de espera":"Enviar pedido de contratação"} <ArrowRight size={16}/></button></div>
+    </section>}
+  </Modal>;
+}
+
 function ContractModal({ quote, busy, onClose, onConfirm }) {
   const [accepted, setAccepted] = useState(false);
   return (

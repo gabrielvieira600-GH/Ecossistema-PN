@@ -1874,3 +1874,12 @@ td pre {
 .budget-summary-items>div {display:flex;justify-content:space-between;padding:6px 0;font-size:12px}
 .budget-total {font-size:26px;color:#087d73;display:block;text-align:right;margin-top:10px}
 @media(max-width:850px){.horizon-topbar{padding:8px 12px}.horizon-nav{gap:4px}.horizon-nav .brand{min-width:unset;width:100%;padding:4px}.horizon-nav .nav-item{font-size:12px}.horizon-nav .sidebar-foot{margin-left:0}.horizon-nav .sidebar-foot>div{display:none}.map-layout{grid-template-columns:1fr}.budget-cols{grid-template-columns:1fr}.budget-head{flex-direction:column}.budget-head-price{align-items:flex-start}}
+
+/* Etapas da solicitação comercial */
+.commercial-progress{display:flex;gap:8px;flex-wrap:wrap;margin:15px 0 18px}.commercial-progress span{padding:9px 13px;border-radius:30px;background:#edf4f5;color:#45616b;font-size:12px}.commercial-progress .current{background:#d2f6ed;color:#05645b;font-weight:700}
+.commercial-intro{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px;background:#eff9f7;border:1px solid #c9e8e3;border-radius:13px;margin-bottom:18px}.commercial-intro span{font-size:19px;color:#007f75;font-weight:800}
+.commercial-step{display:grid;gap:14px}.commercial-step h3{font-size:19px;margin:0}.commercial-step textarea{width:100%;min-height:100px;padding:12px;border:1px solid #d0e0e6;border-radius:9px;resize:vertical}
+.commercial-step select,.commercial-step input:not([type="checkbox"]):not([type="radio"]){max-width:100%;padding:11px;border:1px solid #d0e0e6;border-radius:9px}
+.commercial-option{display:flex;align-items:flex-start;gap:12px;border:1px solid #d9e5e9;border-radius:12px;padding:14px;cursor:pointer}.commercial-option:has(input:checked){border-color:#079b8a;background:#f1fbf9}.commercial-option input{margin-top:3px;accent-color:#008d82}
+.commercial-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.commercial-fields .field{margin:0}.commercial-buttons{display:flex;justify-content:flex-end;gap:12px;flex-wrap:wrap}.request-complete{text-align:center;padding:22px}.request-complete svg{color:#008d82}
+@media(max-width:640px){.commercial-fields{grid-template-columns:1fr}.commercial-intro{flex-direction:column;align-items:start}.commercial-buttons>*{width:100%}}
