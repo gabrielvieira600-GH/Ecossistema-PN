@@ -120,7 +120,7 @@ public class Commerce {
     int lot = request.lot() == null ? 1 : request.lot();
     if (lot < 0 || lot > 3) throw error(HttpStatus.BAD_REQUEST,"Lote inválido.");
     BigDecimal rate = new BigDecimal(new int[]{1449,1510,1574,1638}[lot]);
-    boolean pavilion = area.compareTo(new BigDecimal("20")) > 0 || Boolean.TRUE.equals(request.pavilionItems());
+    boolean pavilionItemsRequired = area.compareTo(new BigDecimal("20")) > 0 || Boolean.TRUE.equals(request.pavilionItems());
     boolean assembly = request.assembly();
     if (area.compareTo(new BigDecimal("20")) > 0 && assembly)
       throw error(HttpStatus.BAD_REQUEST, "Montagem básica indisponível para estandes acima de 20 m².");
@@ -147,8 +147,8 @@ public class Commerce {
     lines.add(Map.of("label","Área livre · Lote "+lot,"total",space));
     BigDecimal mounting = assembly ? money(area.multiply(new BigDecimal("332"))) : BigDecimal.ZERO;
     if (assembly) lines.add(Map.of("label","Montagem básica","total",mounting));
-    BigDecimal pavilionTotal = pavilion ? money(area.multiply(new BigDecimal("67"))) : BigDecimal.ZERO;
-    if (pavilion) lines.add(Map.of("label","Itens de pavilhão","total",pavilionTotal));
+    BigDecimal pavilionTotal = pavilionItemsRequired ? money(area.multiply(new BigDecimal("67"))) : BigDecimal.ZERO;
+    if (pavilionItemsRequired) lines.add(Map.of("label","Itens de pavilhão","total",pavilionTotal));
     BigDecimal extinct = new BigDecimal(extinguisher*227);
     lines.add(Map.of("label","Extintores obrigatórios ("+extinguisher+")","total",extinct));
     BigDecimal additional=BigDecimal.ZERO;
@@ -173,7 +173,7 @@ public class Commerce {
     quote.put("area", area);
     quote.put("rate", rate);
     quote.put("lot",lot);
-    quote.put("pavilionItems",pavilion);
+    quote.put("pavilionItems",pavilionItemsRequired);
     quote.put("lines",lines);
     quote.put("extras",extras);
     quote.put("space", space);
