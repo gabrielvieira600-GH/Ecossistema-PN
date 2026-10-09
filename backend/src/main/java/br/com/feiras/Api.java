@@ -19,12 +19,14 @@ public class Api {
   final Maps maps;
   final Commerce commerce;
   final Db db;
+  final CommercialRequests commercialRequests;
 
-  public Api(Auth auth, Maps maps, Commerce commerce, Db db) {
+  public Api(Auth auth, Maps maps, Commerce commerce, Db db, CommercialRequests commercialRequests) {
     this.auth = auth;
     this.maps = maps;
     this.commerce = commerce;
     this.db = db;
+    this.commercialRequests = commercialRequests;
   }
 
   @GetMapping("/health")
@@ -118,6 +120,20 @@ public class Api {
   public Object contract(@RequestBody Commerce.Selection s, HttpServletRequest req) {
     auth.requireSelection(req, s.ids());
     return commerce.contract(s, Auth.current(), req.getRemoteAddr());
+  }
+
+  @PostMapping("/commercial-requests")
+  public Object commercialRequest(@RequestBody CommercialRequests.Payload payload, HttpServletRequest req) {
+    if (payload == null || payload.selection() == null || payload.selection().ids() == null)
+      throw error(HttpStatus.BAD_REQUEST, "Seleção obrigatória.");
+    auth.requireSelection(req, payload.selection().ids());
+    return commercialRequests.submit(payload, Auth.current(), auth.fair(req));
+  }
+
+  @GetMapping("/admin/commercial-requests")
+  public Object commercialRequests(HttpServletRequest req) {
+    Auth.admin();
+    return commercialRequests.list(auth.fair(req));
   }
 
   public record Version(long version) {}
