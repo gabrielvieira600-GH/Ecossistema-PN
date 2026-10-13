@@ -72,6 +72,9 @@ public class CommercialRequests {
     if (payload.requestType().equals("WAITLIST")) {
       String boothId=req.ids().get(0);
       if (db.sql.queryForObject("SELECT COUNT(*) FROM queue_entry WHERE booth_id=? AND user_id=?",
+          Integer.class,boothId,user.id()) > 0)
+        throw error(HttpStatus.CONFLICT,"Você já está na fila deste estande.");
+      if (db.sql.queryForObject("SELECT COUNT(*) FROM queue_entry WHERE booth_id=? AND user_id=?",
           Integer.class,boothId,user.id()) == 0) {
         db.sql.update("INSERT INTO queue_entry(id,booth_id,user_id,joined_at) VALUES(?,?,?,?)",
           id(),boothId,user.id(),now());

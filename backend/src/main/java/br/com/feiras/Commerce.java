@@ -325,21 +325,31 @@ public class Commerce {
     return Map.of("id", contract, "quote", quote);
   }
 
+  /** Release one booth only; do not clear neighboring booths in an existing group. */
   @Transactional
   public void release(Selection request, Auth.User user) {
-    var booths = select(request);
-    for (var b : booths) {
-      if (!b.get("status").equals("RESERVED")
-          || (!user.role().equals("ADMIN") && !user.id().equals(b.get("owner_id"))))
-        throw error(
-            HttpStatus.FORBIDDEN,
-            "Somente o titular ou um administrador pode liberar uma reserva. Contratações exigem"
-                + " cancelamento administrativo.");
-    }
-    for (var b : booths) {
-      offerOrFree((String) b.get("id"));
-    }
-    db.audit(user.email(), "LIBERAR", request.ids().get(0), Map.of("boothIds", request.ids()));
+    if (request.ids() == null || request.ids().size() != 1)
+      throw error(HttpStatus.BAD_REQUEST, "Selecione exatamente um estande para liberar.");
+    String boothId = request.ids().get(0);
+    db.lockFair(db.fairOf(boothId));
+    var b = db.one("SELECT * FROM booth WHERE id=? AND active=TRUE", boothId);
+    if (request.versions() == null || !Objects.equals(request.versions().get(boothId), ((Number)b.get("version")).longValue()))
+      throw error(HttpStatus.CONFLICT, "O estande foi alterado. Atualize a planta antes de liberar.");
+    if (!List.of("RESERVED", "CONTRACTED").contains(b.get("status")))
+      throw error(HttpStatus.CONFLICT, "Este estande não possui uma reserva ativa.");
+    if (!user.role().equals("ADMIN") && !user.id().equals(b.get("owner_id")))
+      throw error(HttpStatus.FORBIDDEN, "Somente o titular ou um administrador pode liberar o estande.");
+    String previousOwner = (String)b.get("owner_id");
+    String oldGroup = (String)b.get("group_id");
+    // Mark only this booth's request as released. Do not affect other booths in the group.
+    offerOrFree(boothId);
+    if (oldGroup != null)
+      db.sql.update("UPDATE booth SET group_id=NULL WHERE id=?",boothId);
+    db.notifyUser(previousOwner, "O estande " + b.get("code") + " foi liberado.");
+    var admins = db.sql.queryForList("SELECT id FROM app_user WHERE role='ADMIN' AND enabled=TRUE");
+    for (var admin : admins)
+      db.notifyUser((String)admin.get("id"), "Estande " + b.get("code") + " liberado por " + user.email() + ". " + (db.one("SELECT owner_id FROM booth WHERE id=?",boothId).get("owner_id") == null ? "Sem fila; disponível." : "Preferência transferida ao primeiro da fila."));
+    db.audit(user.email(), "LIBERAR_ESTANDE", boothId, Map.of("previousOwner",previousOwner));
   }
 
   @Transactional
@@ -405,12 +415,25 @@ public class Commerce {
                       .get("offer_hours"))
               .intValue();
       var until = Timestamp.from(Instant.now().plusSeconds(hours * 3600L));
+      // Preserve the legal contracting company from the waitlist triage, not the login account.
+      String queueCompany = Objects.toString(first.get("company"), "Expositor");
+      var requests = db.sql.queryForList(
+          "SELECT details FROM commercial_request WHERE user_id=? AND request_type='WAITLIST' "
+              + "AND booth_ids LIKE ? ORDER BY created_at DESC LIMIT 10",
+          first.get("user_id"), "%\"" + boothId + "\"%");
+      for (var requestRow : requests) {
+        try {
+          String candidate = db.json.readTree((String)requestRow.get("details"))
+              .path("requester").path("company").asText("").trim();
+          if (!candidate.isBlank()) { queueCompany = candidate; break; }
+        } catch (com.fasterxml.jackson.core.JsonProcessingException ignored) { /* historical data */ }
+      }
       db.sql.update(
           "UPDATE booth SET"
               + " status='RESERVED',owner_id=?,label=?,expires_at=?,group_id=NULL,version=version+1"
               + " WHERE id=?",
           first.get("user_id"),
-          first.get("company"),
+          queueCompany,
           until,
           boothId);
       db.sql.update("DELETE FROM queue_entry WHERE id=?", first.get("id"));
