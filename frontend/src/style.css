@@ -746,7 +746,7 @@ input[type="checkbox"] {
   fill: #fff0cc;
 }
 .map-booth.CONTRACTED polygon {
-  fill: #cce6f7;
+  fill: #ffc18d;
 }
 .map-booth.BLOCKED polygon {
   fill: #e4e9ee;
@@ -780,7 +780,7 @@ input[type="checkbox"] {
   background: #e8b246;
 }
 .status-dot.CONTRACTED {
-  background: #3d92ca;
+  background: #f97316;
 }
 .status-dot.BLOCKED {
   background: #8998a6;
@@ -1883,3 +1883,10 @@ td pre {
 .commercial-option{display:flex;align-items:flex-start;gap:12px;border:1px solid #d9e5e9;border-radius:12px;padding:14px;cursor:pointer}.commercial-option:has(input:checked){border-color:#079b8a;background:#f1fbf9}.commercial-option input{margin-top:3px;accent-color:#008d82}
 .commercial-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.commercial-fields .field{margin:0}.commercial-buttons{display:flex;justify-content:flex-end;gap:12px;flex-wrap:wrap}.request-complete{text-align:center;padding:22px}.request-complete svg{color:#008d82}
 @media(max-width:640px){.commercial-fields{grid-template-columns:1fr}.commercial-intro{flex-direction:column;align-items:start}.commercial-buttons>*{width:100%}}
+
+/* Atualização 04: ocupação comercial e lista de estandes */
+.booth-list-company { display: block; margin-top: 3px; font-size: 10px; font-weight: 500; color: #ac5621; white-space: normal; overflow-wrap: anywhere; }
+.booth-owner { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 9px; border-radius: 8px; background: #fff3e8; color: #93400d; }
+.status-pill.CONTRACTED { background: #fff0e4; color: #a94b09; }
+.map-booth.CONTRACTED polygon { fill: #ffbb80; }
+.status-dot.CONTRACTED { background: #f97316; }

@@ -695,13 +695,13 @@ function App() {
                         .filter(
                           (b) =>
                             (status === "ALL" || b.status === status) &&
-                            (b.code + " " + b.label)
+                            (b.code + " " + b.label + " " + (b.ownerCompany || ""))
                               .toLowerCase()
                               .includes(query.toLowerCase()),
                         )
                         .map((b) => (
-                          <button key={b.id} onClick={() => pick(b)}>
-                            <strong>{b.code}</strong>
+                          <button key={b.id} onClick={() => pick(b)} title={`${b.code} · ${b.ownerCompany || "Disponível"} · ${b.queueCount} na fila`}>
+                            <strong>{b.code}{b.ownerCompany && <small className="booth-list-company">{b.ownerCompany}</small>}</strong>
                             <span>
                               {b.area == null
                                 ? "Conferir área"
@@ -747,11 +747,9 @@ function App() {
                       <div className="booth-data" key={b.id}>
                         <strong>{b.code}</strong>
                         <span>{b.dimensions || "Dimensões na planta"}</span>
-                        {b.label && (
-                          <p>
-                            <Building2 size={14} />
-                            {b.label}
-                          </p>
+                        {b.ownerCompany && <p className="booth-owner"><Building2 size={14}/> O estande já está reservado por <strong>{b.ownerCompany}</strong>.</p>}
+                        {!b.ownerCompany && b.label && (
+                          <p><Building2 size={14}/>{b.label}</p>
                         )}
                         {b.expires_at && (
                           <p>
@@ -832,35 +830,11 @@ function App() {
                       </button>
                     )}
                     {selected.length === 1 &&
-                      ["BLOCKED", "RESERVED", "CONTRACTED"].includes(
-                        selected[0].status,
-                      ) &&
+                      ["RESERVED", "CONTRACTED"].includes(selected[0].status) &&
                       !selected[0].mine && (
-                        <button
-                          className="button primary full"
-                          disabled={busy || (!selected[0].queuePosition && (!fair?.published || !data.pavilion.reviewed))}
-                          onClick={() =>
-                            run(
-                              async () => {
-                                const b = selected[0];
-                                await send(
-                                  "/booths/" + b.id + "/queue",
-                                  b.queuePosition
-                                    ? undefined
-                                    : { version: b.version },
-                                  b.queuePosition ? "DELETE" : "POST",
-                                );
-                                await refresh();
-                              },
-                              selected[0].queuePosition
-                                ? "Você saiu da fila."
-                                : "Você entrou na fila de preferência.",
-                            )
-                          }
-                        >
-                          {selected[0].queuePosition
-                            ? "Sair da fila"
-                            : "Entrar na fila de preferência"}
+                        <button className="button primary full" disabled={busy || Boolean(selected[0].queuePosition)}
+                          onClick={() => setModal({type:"budget",booths:selected})}>
+                          {selected[0].queuePosition ? `Você está na fila (${selected[0].queuePosition}º)` : "Entrar na fila de espera"} <ArrowRight size={16}/>
                         </button>
                       )}
                     {admin && selected.length === 1 && (
@@ -1274,7 +1248,7 @@ function MapCanvas({
         const sel = selected.some((v) => v.id === b.id),
           filtered =
             (status !== "ALL" && status !== b.status) ||
-            !(b.code + " " + b.label)
+            !(b.code + " " + b.label + " " + (b.ownerCompany || ""))
               .toLowerCase()
               .includes(query.toLowerCase());
         const bb = bounds(b.geometry);
@@ -1290,7 +1264,7 @@ function MapCanvas({
             opacity={filtered ? 0.16 : 1}
             role="button"
             tabIndex={tool === "select" ? 0 : -1}
-            aria-label={`Estande ${b.code}, ${b.area ?? "área a conferir"} metros quadrados, ${statusNames[b.status]}`}
+            aria-label={`Estande ${b.code}, ${b.area ?? "área a conferir"} metros quadrados, ${b.ownerCompany ? `reservado por ${b.ownerCompany}` : statusNames[b.status]}, ${b.queueCount} expositores na fila`}
             onClick={(e) => {
               if (tool === "select")
                 onPick(b, e.ctrlKey || e.metaKey || e.shiftKey);
@@ -1304,7 +1278,7 @@ function MapCanvas({
             onDoubleClick={() => editMode && onEdit(b)}
           >
             <title>
-              {b.code} · {b.area ?? "?"} m² · {b.label || statusNames[b.status]}
+              {b.code} · {b.area ?? "?"} m² · {b.ownerCompany ? `Reservado por ${b.ownerCompany}` : statusNames[b.status]} · {b.queueCount} {b.queueCount === 1 ? "expositor" : "expositores"} na fila
             </title>
             <polygon
               points={b.geometry.map((p) => p.join(",")).join(" ")}
@@ -1570,7 +1544,7 @@ function Quote({ quote }) {
   );
 }
 function CommercialWizard({quote,options,booths,occupied,busy,onClose,onSubmit}) {
-  const [step,setStep]=useState(occupied?2:1);
+  const [step,setStep]=useState(1);
   const [payment,setPayment]=useState({type:"CASH",dueDay:5,installments:2,twentyPercentNow:false,installmentsFromJanuary:false,customTerms:""});
   const [mode,setMode]=useState("SAME"),[changes,setChanges]=useState("");
   const [details,setDetails]=useState({}),[accepted,setAccepted]=useState(false),[submitting,setSubmitting]=useState(false),[error,setError]=useState("");
@@ -1594,7 +1568,7 @@ function CommercialWizard({quote,options,booths,occupied,busy,onClose,onSubmit})
     [5,10,15,20,25].includes(Number(payment.dueDay)) && (payment.type==="CASH" || (payment.installments>=2 && payment.installments<=36));
   async function submit(){
     setSubmitting(true);setError("");
-    try {await onSubmit(occupied?null:payment,{mode,changes:mode==="CHANGE"?changes:"",newExhibitor:mode==="NEW"?details:{}});}
+    try {await onSubmit(payment,{mode,changes:mode==="CHANGE"?changes:"",newExhibitor:mode==="NEW"?details:{}});}
     catch(e){setError(e.message||"Não foi possível enviar o pedido.");}
     finally {setSubmitting(false);}
   }
@@ -1622,7 +1596,7 @@ function CommercialWizard({quote,options,booths,occupied,busy,onClose,onSubmit})
         <p className="notice">O formulário externo da Portos e Navios ainda precisa ser conferido campo a campo para garantir correspondência integral.</p></>}
       <label className="check"><input type="checkbox" checked={accepted} onChange={e=>setAccepted(e.target.checked)}/>Confirmo que as informações prestadas estão corretas e solicito análise comercial. Estou ciente de que isto não efetua pagamento nem conclui contrato.</label>
       {error&&<div className="notice" role="alert">{error}</div>}
-      <div className="commercial-buttons">{!occupied&&<button className="button secondary" onClick={()=>setStep(1)}>Voltar</button>}
+      <div className="commercial-buttons"><button className="button secondary" onClick={()=>setStep(1)}>Voltar</button>
         <button className="button primary" disabled={!accepted||!validData||busy||submitting} onClick={submit}>{submitting?"Enviando pedido…":occupied?"Enviar pedido de fila de espera":"Enviar pedido de contratação"} <ArrowRight size={16}/></button></div>
     </section>}
   </Modal>;
