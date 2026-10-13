@@ -1551,17 +1551,19 @@ function BudgetModal({ selected, fair, busy, onClose, onContract, onError }) {
   const [lot,setLot] = useState(1);
   const [pavilionItems,setPavilionItems] = useState(mandatoryPavilion);
   const [assembly,setAssembly] = useState(false);
-  const [extras,setExtras] = useState({extinguisher:extinguisherMin,energy:1,corners:0});
+  const cornerCount = selected.reduce((n,b)=>n+Number(b.corners||0),0);
+  const energyKva = +(area * 0.08).toFixed(4);
+  const [extras,setExtras] = useState({extinguisher:extinguisherMin});
   const [q,setQ] = useState(null);
   const [waiting,setWaiting] = useState(false);
   const update = (key,n) => {setQ(null);setExtras(e=>({...e,[key]:Math.max(0,Math.min(1000,Number(n)||0))}));};
-  const options = { lot,pavilionItems:pavilionItems||mandatoryPavilion,assembly:!mandatoryPavilion&&assembly, extras};
+  const options = { lot,pavilionItems:pavilionItems||mandatoryPavilion,assembly:!mandatoryPavilion&&assembly, extras:{...extras,corners:cornerCount} };
   async function calculate(contract=false){
     setWaiting(true);
     try {const response=await send("/quote",{...selection(selected,options.assembly),...options});setQ(response);if(contract)onContract(response,options);}catch(err){onError(err);}finally{setWaiting(false);}
   }
   useEffect(()=>{calculate();},[lot,pavilionItems,assembly,JSON.stringify(extras)]);
-  const preview=area*rates[lot]+(pavilionItems||mandatoryPavilion?area*pricing.pavilion:0)+(assembly&&!mandatoryPavilion?area*pricing.assembly:0)+Math.ceil(area/25)*pricing.extinguisher;
+  const preview=area*rates[lot]+(pavilionItems||mandatoryPavilion?area*pricing.pavilion:0)+(assembly&&!mandatoryPavilion?area*pricing.assembly:0)+Math.ceil(area/25)*pricing.extinguisher + cornerCount*pricing.corners + energyKva*pricing.energy;
   return <Modal title="Simulador de orçamento" wide onClose={onClose}>
     <div className="budget-head"><div><span>PROPOSTA COMERCIAL</span><h2>{selected.map(b=>b.code).join(' + ')}</h2><p>{area.toLocaleString('pt-BR')} m² · {selected.length} estande(s)</p></div><div className="budget-head-price"><small>Total calculado</small><strong>{q?money(q.total):money(preview)}</strong></div></div>
     <div className="budget-cols">
@@ -1569,8 +1571,8 @@ function BudgetModal({ selected, fair, busy, onClose, onContract, onError }) {
       <h3>02 · Itens obrigatórios</h3><label className="budget-check"><input type="checkbox" checked={pavilionItems||mandatoryPavilion} disabled={mandatoryPavilion} onChange={e=>{setPavilionItems(e.target.checked);setQ(null)}}/> Itens de pavilhão · {money(pricing.pavilion)}/m² {mandatoryPavilion&&<small>Obrigatório acima de 20m²</small>}</label>
       <label className="budget-check"><input type="checkbox" checked={assembly&&!mandatoryPavilion} disabled={mandatoryPavilion} onChange={e=>{setAssembly(e.target.checked);setQ(null)}}/> Montagem básica · {money(pricing.assembly)}/m² {mandatoryPavilion&&<small>Indisponível acima de 20m²</small>}</label>
       <div className="budget-row"><div>Extintores de incêndio <small>Mínimo: 1 por 25 m²</small></div><strong>{extinguisherMin} × {money(pricing.extinguisher)}</strong></div>
-      <div className="budget-row"><label>Adicional por esquina · {money(pricing.corners)}<input type="number" min="0" max="1000" value={extras.corners||0} onChange={e=>update('corners',e.target.value)}/></label></div>
-      <div className="budget-row"><label>Energia do estande (KVA) · {money(pricing.energy)}<input type="number" min="1" max="1000" value={extras.energy??1} onChange={e=>update('energy',Math.max(1,+e.target.value))}/></label></div>
+      <div className="budget-row"><div>Adicional por esquina <small>{money(pricing.corners)} por esquina · conforme cadastro dos estandes</small></div><strong>{cornerCount} × {money(pricing.corners)}</strong></div>
+      <div className="budget-row"><div>Energia do estande <small>{area.toLocaleString('pt-BR')} m² × 0,08 = {energyKva.toLocaleString('pt-BR')} kVA · {money(pricing.energy)}/kVA</small></div><strong>{money(energyKva * pricing.energy)}</strong></div>
       </section>
       <section className="budget-section"><h3>03 · Itens adicionais</h3><div className="budget-extras">{BUDGET_EXTRAS.map(item=><label key={item.key} className="budget-row"><span>{item.label}<small>{pricing[item.key]?money(pricing[item.key])+' / un.':'Valor mediante negociação'}</small></span><input aria-label={item.label} type="number" min="0" max="1000" value={extras[item.key]||0} onChange={e=>update(item.key,e.target.value)}/></label>)}</div></section>
     </div>
@@ -1838,6 +1840,7 @@ function BoothEditor({
           label: booth.label,
           status: booth.status,
           verified: booth.verified,
+          corners: booth.corners ?? 0,
         }
       : {
           version: 0,
@@ -1854,6 +1857,7 @@ function BoothEditor({
           label: "",
           status: "AVAILABLE",
           verified: false,
+          corners: 0,
         },
   );
   const [users, setUsers] = useState([]),
@@ -1973,6 +1977,10 @@ function BoothEditor({
                 </select>
               </Field>
             </div>
+            <Field label="Esquinas (quantidade fixa do estande)">
+              <input type="number" min="0" max="20" step="1" value={draft.corners}
+                onChange={e=>change("corners", Math.max(0, Math.min(20, Number(e.target.value)||0)))} />
+            </Field>
             <label className="check">
               <input
                 type="checkbox"
