@@ -95,6 +95,11 @@ public class Maps {
             "version")) out.put(k, b.get(k));
     out.put("geometry", db.points((String) b.get("geometry")));
     out.put("mine", user.id().equals(b.get("owner_id")));
+    // Public exhibition information only, never reveal owner contact details.
+    if (b.get("owner_id") != null && !"AVAILABLE".equals(b.get("status"))) {
+      var holder=db.sql.queryForList("SELECT company FROM app_user WHERE id=?", b.get("owner_id"));
+      out.put("ownerCompany", holder.isEmpty() ? "Expositor" : holder.get(0).get("company"));
+    } else out.put("ownerCompany", null);
     int count =
         db.sql.queryForObject(
             "SELECT COUNT(*) FROM queue_entry WHERE booth_id=?", Integer.class, b.get("id"));

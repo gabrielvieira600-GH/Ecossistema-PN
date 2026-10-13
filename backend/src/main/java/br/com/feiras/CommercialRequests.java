@@ -39,8 +39,12 @@ public class CommercialRequests {
       throw error(HttpStatus.BAD_REQUEST,"Tipo de solicitação inválido.");
     var q=commerce.quote(req,user);
     if (!fairId.equals(q.get("fairId"))) throw error(HttpStatus.FORBIDDEN,"Empresa incorreta.");
+    if (!Boolean.TRUE.equals(q.get("ready")))
+      throw error(HttpStatus.CONFLICT,"A comercialização depende de preços e planta publicados.");
     if (!Objects.equals(req.quoteHash(),q.get("hash")) || !req.acceptTerms())
       throw error(HttpStatus.CONFLICT,"O orçamento mudou. Revise e aceite novamente.");
+    // Lock the fair before reading booth state; serialize competing submissions.
+    db.lockFair(fairId);
     var booths=db.sql.queryForList("SELECT id,status,owner_id FROM booth WHERE id IN ("+
         String.join(",",Collections.nCopies(req.ids().size(),"?"))+")", req.ids().toArray());
     if (booths.size()!=req.ids().size()) throw error(HttpStatus.CONFLICT,"Estandes não encontrados.");
@@ -48,9 +52,9 @@ public class CommercialRequests {
         ("RESERVED".equals(b.get("status")) && user.id().equals(b.get("owner_id"))));
     if (payload.requestType().equals("CONTRACT") && !available)
       throw error(HttpStatus.CONFLICT,"O estande está ocupado. Solicite entrada na fila.");
-    if (payload.requestType().equals("WAITLIST") && (available || booths.size()!=1))
+    if (payload.requestType().equals("WAITLIST") && (available || booths.size()!=1 || !List.of("CONTRACTED","RESERVED").contains(booths.get(0).get("status"))))
       throw error(HttpStatus.BAD_REQUEST,"Fila disponível apenas para um estande ocupado.");
-    if (payload.requestType().equals("CONTRACT")) validatePayment(payload.payment(),fairId);
+    validatePayment(payload.payment(),fairId);
     if (payload.contractData()==null) throw error(HttpStatus.BAD_REQUEST,"Confirme os dados contratuais.");
     var cd=payload.contractData();
     if (!List.of("SAME","CHANGE","NEW").contains(cd.mode())) throw error(HttpStatus.BAD_REQUEST,"Opção de cadastro inválida.");
@@ -61,7 +65,6 @@ public class CommercialRequests {
       throw error(HttpStatus.BAD_REQUEST,"Preencha os dados obrigatórios do novo expositor.");
     if (payload.requestType().equals("WAITLIST")) {
       String boothId=req.ids().get(0);
-      db.lockFair(fairId);
       if (db.sql.queryForObject("SELECT COUNT(*) FROM queue_entry WHERE booth_id=? AND user_id=?",
           Integer.class,boothId,user.id()) == 0) {
         db.sql.update("INSERT INTO queue_entry(id,booth_id,user_id,joined_at) VALUES(?,?,?,?)",
@@ -76,13 +79,24 @@ public class CommercialRequests {
     String id=id();
     db.sql.update("INSERT INTO commercial_request(id,fair_id,user_id,booth_ids,request_type,details,status,created_at) VALUES(?,?,?,?,?,?,?,?)",
       id,fairId,user.id(),db.encode(req.ids()),payload.requestType(),db.encode(detail),"PENDING_EMAIL",now());
-    // Do not mark a booth CONTRACTED. Commercial team must review and complete contracts manually.
+    // The booth is occupied as soon as the commercial request is submitted.
+    // The commercial workflow (signature/payment) remains pending independently.
+    if (payload.requestType().equals("CONTRACT")) {
+      String groupId=req.ids().size()>1 ? id() : null;
+      for (var booth:booths) {
+        int updated=db.sql.update("UPDATE booth SET status='CONTRACTED', owner_id=?, label=?, "
+            + "expires_at=NULL, group_id=COALESCE(?,group_id), version=version+1 "
+            + "WHERE id=? AND (status='AVAILABLE' OR (status='RESERVED' AND owner_id=?))",
+            user.id(),user.company(),groupId,booth.get("id"),user.id());
+        if(updated!=1) throw error(HttpStatus.CONFLICT,"Este estande acabou de ser ocupado. Atualize a planta.");
+      }
+    }
     db.notifyUser(user.id(),"Pedido recebido pelo portal: "+id+". Aguarda processamento comercial.");
     db.audit(user.email(),"PEDIDO_COMERCIAL",id,Map.of("fair",fairId,"type",payload.requestType()));
     boolean mailed=sendEmail(id,detail);
     if(mailed) db.sql.update("UPDATE commercial_request SET status='EMAILED', emailed_at=? WHERE id=?",now(),id);
     return Map.of("id",id,"emailSent",mailed,"message",mailed?
-      "Seu pedido foi enviado para o comercial da "+q.get("fair")+".":
+      "Seu pedido foi enviado para o comercial da "+q.get("fair")+". O estande já está ocupado no mapa, sujeito à formalização comercial.":
       "Seu pedido foi registrado, mas o e-mail ainda não foi enviado. A equipe deve verificar a configuração de e-mail.");
   }
   static class StreamRequired {
