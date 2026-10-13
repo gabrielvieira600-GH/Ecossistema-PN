@@ -1,0 +1,2 @@
+CREATE TABLE fair_pricing_catalog (fair_id VARCHAR(40) PRIMARY KEY REFERENCES fair(id), prices TEXT NOT NULL);
+INSERT INTO fair_pricing_catalog(fair_id,prices) SELECT id,'{"lot0":1449,"lot1":1510,"lot2":1574,"lot3":1638,"pavilion":67,"assembly":332,"extinguisher":227,"corners":308,"energy":681,"energyExtra":526,"sponsorship":0,"doorDeposit":567,"signage":1008,"palette":1442,"social":1640,"cord":1888,"video":1717,"qr":446,"totem":4480}' FROM fair;
