@@ -28,12 +28,18 @@ public class CommercialRequests {
       Boolean installmentsFromJanuary, String customTerms) {}
   public record ContractData(String mode, String changes, Map<String,String> newExhibitor) {}
   public record Payload(Commerce.Selection selection, String requestType, Payment payment,
-      ContractData contractData) {}
+      ContractData contractData, Requester requester) {}
+  public record Requester(String company,String name,String email,String phone) {}
 
   @Transactional
   public Map<String,Object> submit(Payload payload, Auth.User user, String fairId) {
     if (payload == null || payload.selection() == null || payload.selection().ids() == null || payload.selection().ids().isEmpty())
       throw error(HttpStatus.BAD_REQUEST,"Selecione um estande.");
+    var requester = payload.requester();
+    if(requester==null || requester.company()==null || requester.name()==null || requester.email()==null || requester.phone()==null
+      || requester.company().isBlank() || requester.name().isBlank() || !requester.email().matches("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$") || requester.phone().isBlank()
+      || requester.company().length()>160 || requester.name().length()>160 || requester.email().length()>240 || requester.phone().length()>60)
+      throw error(HttpStatus.BAD_REQUEST,"Preencha os dados do solicitante corretamente.");
     var req=payload.selection();
     if (!List.of("CONTRACT","WAITLIST").contains(payload.requestType()))
       throw error(HttpStatus.BAD_REQUEST,"Tipo de solicitação inválido.");
@@ -75,7 +81,7 @@ public class CommercialRequests {
     var detail=new LinkedHashMap<String,Object>();
     detail.put("requestType",payload.requestType()); detail.put("fair",q.get("fair"));
     detail.put("user",Map.of("company",user.company(),"email",user.email(),"contact",user.contact()));
-    detail.put("quote",q); detail.put("payment",payload.payment()); detail.put("contractData",cd);
+    detail.put("requester",requester); detail.put("quote",q); detail.put("payment",payload.payment()); detail.put("contractData",cd);
     String id=id();
     db.sql.update("INSERT INTO commercial_request(id,fair_id,user_id,booth_ids,request_type,details,status,created_at) VALUES(?,?,?,?,?,?,?,?)",
       id,fairId,user.id(),db.encode(req.ids()),payload.requestType(),db.encode(detail),"PENDING_EMAIL",now());
@@ -87,7 +93,7 @@ public class CommercialRequests {
         int updated=db.sql.update("UPDATE booth SET status='CONTRACTED', owner_id=?, label=?, "
             + "expires_at=NULL, group_id=COALESCE(?,group_id), version=version+1 "
             + "WHERE id=? AND (status='AVAILABLE' OR (status='RESERVED' AND owner_id=?))",
-            user.id(),user.company(),groupId,booth.get("id"),user.id());
+            user.id(),requester.company().trim(),groupId,booth.get("id"),user.id());
         if(updated!=1) throw error(HttpStatus.CONFLICT,"Este estande acabou de ser ocupado. Atualize a planta.");
       }
     }
@@ -139,6 +145,9 @@ public class CommercialRequests {
       html.append("<h2>Empresa solicitante</h2><p>").append(escape(String.valueOf(u.get("company"))))
         .append(" — ").append(escape(String.valueOf(u.get("contact"))))
         .append(" — ").append(escape(String.valueOf(u.get("email")))).append("</p>");
+      html.append("<h2>Dados do solicitante</h2><pre style='white-space:pre-wrap'>")
+        .append(escape(db.json.writerWithDefaultPrettyPrinter().writeValueAsString(detail.get("requester"))))
+        .append("</pre>");
       html.append("<h2>Orçamento</h2><table style='border-collapse:collapse;width:100%'>");
       @SuppressWarnings("unchecked")
       List<Map<String,Object>> lines=(List<Map<String,Object>>)q.get("lines");

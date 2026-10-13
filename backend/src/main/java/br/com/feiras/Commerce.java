@@ -119,7 +119,13 @@ public class Commerce {
     }
     int lot = request.lot() == null ? 1 : request.lot();
     if (lot < 0 || lot > 3) throw error(HttpStatus.BAD_REQUEST,"Lote inválido.");
-    BigDecimal rate = new BigDecimal(new int[]{1449,1510,1574,1638}[lot]);
+    Map<String,BigDecimal> commercialRates;
+    try {
+      String json = db.sql.queryForObject("SELECT prices FROM fair_pricing_catalog WHERE fair_id=?",String.class,fairId);
+      var type = db.json.getTypeFactory().constructMapType(LinkedHashMap.class,String.class,BigDecimal.class);
+      commercialRates = db.json.readValue(json,type);
+    } catch(Exception ex) { throw new IllegalStateException("Preços comerciais indisponíveis.",ex); }
+    BigDecimal rate = commercialRates.get("lot"+lot);
     boolean pavilionItemsRequired = area.compareTo(new BigDecimal("20")) > 0 || Boolean.TRUE.equals(request.pavilionItems());
     boolean assembly = request.assembly();
     if (area.compareTo(new BigDecimal("20")) > 0 && assembly)
@@ -133,30 +139,30 @@ public class Commerce {
       Map.entry("palette","Palestra · 40 min"), Map.entry("social","Redes sociais da Navalshore"),
       Map.entry("cord","Cordão de crachá"), Map.entry("video","Vídeo · totens LED"),
       Map.entry("qr","Coletor QR Codes"), Map.entry("totem","Logomarca em dois totens"));
-    Map<String,Integer> prices = new LinkedHashMap<>();
-    prices.put("corners",308); prices.put("energy",681);
-    prices.put("energyExtra",526); prices.put("sponsorship",0);
-    prices.put("doorDeposit",567); prices.put("signage",1008);
-    prices.put("palette",1442); prices.put("social",1640);
-    prices.put("cord",1888); prices.put("video",1717);
-    prices.put("qr",446); prices.put("totem",4480);
+    Map<String,BigDecimal> prices = new LinkedHashMap<>();
+    prices.put("corners",commercialRates.get("corners")); prices.put("energy",commercialRates.get("energy"));
+    prices.put("energyExtra",commercialRates.get("energyExtra")); prices.put("sponsorship",commercialRates.get("sponsorship"));
+    prices.put("doorDeposit",commercialRates.get("doorDeposit")); prices.put("signage",commercialRates.get("signage"));
+    prices.put("palette",commercialRates.get("palette")); prices.put("social",commercialRates.get("social"));
+    prices.put("cord",commercialRates.get("cord")); prices.put("video",commercialRates.get("video"));
+    prices.put("qr",commercialRates.get("qr")); prices.put("totem",commercialRates.get("totem"));
     for (var key : extras.keySet()) if (!prices.containsKey(key) && !key.equals("extinguisher"))
       throw error(HttpStatus.BAD_REQUEST,"Item adicional inválido.");
     List<Map<String,Object>> lines = new ArrayList<>();
     BigDecimal space = money(area.multiply(rate));
     lines.add(Map.of("label","Área livre · Lote "+lot,"total",space));
-    BigDecimal mounting = assembly ? money(area.multiply(new BigDecimal("332"))) : BigDecimal.ZERO;
+    BigDecimal mounting = assembly ? money(area.multiply(commercialRates.get("assembly"))) : BigDecimal.ZERO;
     if (assembly) lines.add(Map.of("label","Montagem básica","total",mounting));
-    BigDecimal pavilionTotal = pavilionItemsRequired ? money(area.multiply(new BigDecimal("67"))) : BigDecimal.ZERO;
+    BigDecimal pavilionTotal = pavilionItemsRequired ? money(area.multiply(commercialRates.get("pavilion"))) : BigDecimal.ZERO;
     if (pavilionItemsRequired) lines.add(Map.of("label","Itens de pavilhão","total",pavilionTotal));
-    BigDecimal extinct = new BigDecimal(extinguisher*227);
+    BigDecimal extinct = commercialRates.get("extinguisher").multiply(BigDecimal.valueOf(extinguisher));
     lines.add(Map.of("label","Extintores obrigatórios ("+extinguisher+")","total",extinct));
     BigDecimal additional=BigDecimal.ZERO;
     for (var entry : prices.entrySet()) {
       int units=extras.getOrDefault(entry.getKey(),entry.getKey().equals("energy")?1:0);
       if(units<0 || units>1000 || (entry.getKey().equals("energy") && units<1))
         throw error(HttpStatus.BAD_REQUEST,"Quantidade adicional inválida.");
-      BigDecimal value=new BigDecimal(entry.getValue()).multiply(new BigDecimal(units));
+      BigDecimal value=entry.getValue().multiply(new BigDecimal(units));
       if(units>0) lines.add(Map.of("label",names.get(entry.getKey())+" ("+units+")","total",value));
       additional=additional.add(value);
     }
@@ -177,7 +183,7 @@ public class Commerce {
     quote.put("lines",lines);
     quote.put("extras",extras);
     quote.put("space", space);
-    quote.put("assemblyRate", new BigDecimal("332"));
+    quote.put("assemblyRate", commercialRates.get("assembly"));
     quote.put("assembly", assembly);
     quote.put("mounting", mounting);
     quote.put("fee", fee);

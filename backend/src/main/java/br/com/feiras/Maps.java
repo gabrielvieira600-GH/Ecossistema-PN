@@ -52,11 +52,40 @@ public class Maps {
 
   public List<Map<String, Object>> fairs() {
     var fairs = db.sql.queryForList("SELECT * FROM fair ORDER BY id");
-    for (var f : fairs)
+    for (var f : fairs) {
+      f.put("pricingCatalog", catalog((String)f.get("id")));
       f.put(
           "pavilions",
           db.sql.queryForList("SELECT * FROM pavilion WHERE fair_id=? ORDER BY name", f.get("id")));
+    }
     return fairs;
+  }
+
+  public Map<String, java.math.BigDecimal> catalog(String fairId) {
+    String json = db.sql.queryForObject("SELECT prices FROM fair_pricing_catalog WHERE fair_id=?", String.class, fairId);
+    try {
+      var type = db.json.getTypeFactory().constructMapType(LinkedHashMap.class, String.class, BigDecimal.class);
+      return db.json.readValue(json, type);
+    } catch(Exception ex) { throw new IllegalStateException("Tabela comercial inválida.", ex); }
+  }
+
+  @Transactional
+  public void pricingCatalog(String fairId, Map<String,Object> input, Auth.User admin) {
+    db.lockFair(fairId);
+    var existing = catalog(fairId);
+    if (input == null || !existing.keySet().equals(input.keySet()))
+      throw error(HttpStatus.BAD_REQUEST, "Informe todos os preços da calculadora.");
+    var updated = new LinkedHashMap<String,BigDecimal>();
+    for(String key : existing.keySet()) {
+      try {
+        BigDecimal price = new BigDecimal(String.valueOf(input.get(key)));
+        if(price.signum()<0 || price.compareTo(new BigDecimal("1000000"))>0 || price.scale()>2)
+          throw new NumberFormatException();
+        updated.put(key, price);
+      } catch(Exception ex) { throw error(HttpStatus.BAD_REQUEST, "Preço inválido: "+key); }
+    }
+    db.sql.update("UPDATE fair_pricing_catalog SET prices=? WHERE fair_id=?", db.encode(updated), fairId);
+    db.audit(admin.email(), "TABELA_PRECOS", fairId, Map.of("prices",updated));
   }
 
   @Transactional
@@ -294,6 +323,22 @@ public class Maps {
   }
 
   @Transactional
+  public void verifyBooth(String id, boolean verified, Auth.User admin) {
+    db.lockFair(db.fairOf(id));
+    var booth=db.one("SELECT * FROM booth WHERE id=? AND active=TRUE",id);
+    if (List.of("RESERVED","CONTRACTED").contains(booth.get("status")) && !Boolean.TRUE.equals(booth.get("verified")))
+      throw error(HttpStatus.CONFLICT,"Não é possível alterar a conferência de um estande ocupado.");
+    if (verified && booth.get("area")==null)
+      throw error(HttpStatus.BAD_REQUEST,"Informe a metragem antes da conferência.");
+    if (verified && (booth.get("geometry")==null || db.points((String)booth.get("geometry")).size()<3))
+      throw error(HttpStatus.BAD_REQUEST,"Confira o contorno do estande.");
+    if (!Objects.equals(booth.get("verified"),verified)) {
+      db.sql.update("UPDATE booth SET verified=?,version=version+1 WHERE id=?",verified,id);
+      db.audit(admin.email(),"VERIFICAR_ESTANDE",id,Map.of("verified",verified));
+    }
+  }
+
+  @Transactional
   public void delete(String id, long version, Auth.User admin) {
     db.lockFair(db.fairOf(id));
     var b = db.one("SELECT * FROM booth WHERE id=? AND active=TRUE", id);
@@ -350,11 +395,10 @@ public class Maps {
         || p.terms() == null
         || p.terms().length() > 20000)
       throw error(HttpStatus.BAD_REQUEST, "Confira impostos, condições e prazos.");
-    if (p.published() && (p.rate().signum() <= 0 || p.terms().trim().length() < 30))
+    if (p.published() && p.rate().signum() <= 0)
       throw error(
           HttpStatus.BAD_REQUEST,
-          "Para publicar, informe preço por m² e condições comerciais completas (mínimo 30"
-              + " caracteres).");
+          "Para publicar, informe um preço base por m² maior que zero.");
     db.sql.update(
         "UPDATE fair SET"
             + " published=?,rate=?,assembly_rate=?,fixed_fee=?,tax_percent=?,reserve_hours=?,offer_hours=?,terms=?,version=version+1"

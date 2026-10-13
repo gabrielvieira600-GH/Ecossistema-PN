@@ -224,6 +224,12 @@ public class Api {
     maps.pricing(id, p, Auth.admin());
   }
 
+  @PutMapping("/admin/fairs/{id}/pricing-catalog")
+  public void pricingCatalog(@PathVariable String id, @RequestBody Map<String,Object> values, HttpServletRequest req) {
+    auth.requireFair(req, id);
+    maps.pricingCatalog(id, values, Auth.admin());
+  }
+
   public record Reviewed(boolean reviewed) {}
 
   @PutMapping("/admin/pavilions/{id}/review")
@@ -242,6 +248,14 @@ public class Api {
   public void edit(@PathVariable String id, @RequestBody Maps.Edit e, HttpServletRequest req) {
     auth.requireBooth(req, id);
     maps.edit(id, e, Auth.admin());
+  }
+
+  public record Verification(boolean verified) {}
+
+  @PutMapping("/admin/booths/{id}/verification")
+  public void verification(@PathVariable String id, @RequestBody Verification v, HttpServletRequest req) {
+    auth.requireBooth(req,id);
+    maps.verifyBooth(id, v.verified(), Auth.admin());
   }
 
   @DeleteMapping("/admin/booths/{id}")
