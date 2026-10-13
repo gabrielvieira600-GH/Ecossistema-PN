@@ -1298,10 +1298,32 @@ function MapCanvas({
               .toLowerCase()
               .includes(query.toLowerCase());
         const bb = bounds(b.geometry);
-        const font = Number(b.font_size);
-        const lines = b.label
-          ? b.label.match(/.{1,18}(\s|$)|.{1,18}/g) || [b.label]
-          : [];
+        const occupant = b.ownerCompany && b.status !== "AVAILABLE" ? String(b.ownerCompany).trim() : "";
+        const boothWidth = Math.max(1, bb.w);
+        const boothHeight = Math.max(1, bb.h);
+        // Reserved booths use distinct, non-overlapping regions for code/company/area.
+        // Restrict the text to each polygon and avoid collisions in very small booths.
+        const companyFont = Math.max(2.6, Math.min(7, Number(b.font_size) * 1.35 || 5, boothWidth / 5.6, boothHeight / 4.3));
+        const codeFont = Math.max(2.4, Math.min(6.5, boothWidth / 5, boothHeight / 4.7));
+        const capacity = Math.max(4, Math.floor(boothWidth / (companyFont * 0.56)));
+        const companyWords = occupant.split(/\s+/);
+        const companyLines = [];
+        for (const word of companyWords) {
+          if (!word) continue;
+          const chunks = word.match(new RegExp(`.{1,${capacity}}`, "g")) || [];
+          for (const chunk of chunks) {
+            const last = companyLines.length - 1;
+            if (last >= 0 && (companyLines[last] + " " + chunk).length <= capacity)
+              companyLines[last] += " " + chunk;
+            else companyLines.push(chunk);
+          }
+        }
+        const compactLines = companyLines.length > 3
+          ? [companyLines[0], companyLines[1], companyLines.slice(2).join(" ").slice(0, capacity - 1) + "…"]
+          : companyLines;
+        const otherLines = !occupant && b.label
+          ? (b.label.match(/.{1,18}(\s|$)|.{1,18}/g) || [b.label]) : [];
+        const font = Number(b.font_size) || 4.5;
         const labels = !original;
         return (
           <g
@@ -1344,43 +1366,44 @@ function MapCanvas({
                   </clipPath>
                 </defs>
                 <g pointerEvents="none" clipPath={"url(#clip-" + b.id + ")"}>
-                  <text
-                    x={bb.x + bb.w / 2}
-                    y={bb.y + bb.h / 2 - lines.length * font * 0.55}
-                    textAnchor="middle"
-                    dominantBaseline="middle"
-                    fontSize={Math.min(7, bb.w * 0.35, bb.h * 0.3)}
-                    fontWeight="700"
-                    fill="#0b2b42"
-                  >
-                    {b.code}
-                  </text>
-                  {lines.map((line, i) => (
-                    <text
-                      key={i}
-                      x={bb.x + bb.w / 2}
-                      y={
-                        bb.y +
-                        bb.h / 2 +
-                        (i - (lines.length - 1) / 2) * font * 1.1
-                      }
-                      textAnchor="middle"
-                      dominantBaseline="middle"
-                      fontSize={font}
-                      fill="#173645"
-                    >
-                      {line.trim()}
-                    </text>
-                  ))}
-                  <text
-                    x={bb.x + bb.w / 2}
-                    y={bb.y + bb.h - 2}
-                    textAnchor="middle"
-                    fontSize={Math.min(5, bb.h * 0.16)}
-                    fill="#4c6675"
-                  >
-                    {b.area ?? "?"} m²
-                  </text>
+                  {occupant ? (
+                    <>
+                      <text x={bb.x + bb.w / 2} y={bb.y + bb.h * 0.17}
+                        textAnchor="middle" dominantBaseline="middle" fontSize={codeFont}
+                        fontWeight="800" fill="#08293c">{b.code}</text>
+                      <line x1={bb.x + bb.w * 0.12} x2={bb.x + bb.w * 0.88}
+                        y1={bb.y + bb.h * 0.29} y2={bb.y + bb.h * 0.29}
+                        stroke="#cc713d" strokeOpacity="0.8" strokeWidth="0.6" />
+                      {compactLines.map((line, i) => (
+                        <text key={i} x={bb.x + bb.w / 2}
+                          y={bb.y + bb.h * 0.48 + (i - (compactLines.length - 1) / 2) * companyFont * 1.18}
+                          textAnchor="middle" dominantBaseline="middle"
+                          fontWeight="800" fontSize={companyFont} fill="#0c3148">
+                          {line}
+                        </text>
+                      ))}
+                      <text x={bb.x + bb.w / 2} y={bb.y + bb.h * 0.90}
+                        textAnchor="middle" dominantBaseline="middle"
+                        fontSize={Math.min(5.2, boothHeight * 0.12, boothWidth / 6)}
+                        fill="#385465">{b.area ?? "?"} m²</text>
+                    </>
+                  ) : (
+                    <>
+                      <text x={bb.x + bb.w / 2} y={bb.y + bb.h / 2 - otherLines.length * font * 0.55}
+                        textAnchor="middle" dominantBaseline="middle"
+                        fontSize={Math.min(7, bb.w * 0.35, bb.h * 0.3)}
+                        fontWeight="700" fill="#0b2b42">{b.code}</text>
+                      {otherLines.map((line, i) => (
+                        <text key={i} x={bb.x + bb.w / 2}
+                          y={bb.y + bb.h / 2 + (i - (otherLines.length - 1) / 2) * font * 1.1}
+                          textAnchor="middle" dominantBaseline="middle"
+                          fontSize={font} fill="#173645">{line.trim()}</text>
+                      ))}
+                      <text x={bb.x + bb.w / 2} y={bb.y + bb.h - 2}
+                        textAnchor="middle" fontSize={Math.min(5, bb.h * 0.16)}
+                        fill="#4c6675">{b.area ?? "?"} m²</text>
+                    </>
+                  )}
                 </g>
               </>
             )}
