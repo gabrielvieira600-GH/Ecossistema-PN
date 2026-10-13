@@ -1,213 +1,610 @@
--- V5: corners are pavilion/booth properties, not optional quantities on an order.
+-- V5: booth corner quantities. Compatible with PostgreSQL and H2 test database.
+-- Apply only to Navalshore; never change stand ownership or existing commercial requests.
 ALTER TABLE booth ADD COLUMN corners INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE booth ADD CONSTRAINT booth_corners_range CHECK (corners BETWEEN 0 AND 20);
--- Match booth codes with/without dashes, spaces or zero padding (A-01 -> A1).
--- Restricted to Navalshore to avoid overwriting another fair's codes.
-WITH given(code, corners) AS (VALUES
-('A1',2),
-('A2',1),
-('A3',1),
-('A4',1),
-('A5',2),
-('A7',1),
-('A8',1),
-('A9',1),
-('A10',1),
-('A10A',1),
-('A11',1),
-('A12',1),
-('A13',1),
-('A15',1),
-('A17',1),
-('A18',1),
-('A19',1),
-('A20',0),
-('A21',1),
-('A22',1),
-('B1',2),
-('B2',1),
-('B3',4),
-('B4',1),
-('B5',2),
-('B6',2),
-('B7',1),
-('B8',1),
-('B81',0),
-('B9',1),
-('B10',1),
-('B11',1),
-('B12',1),
-('B13',1),
-('B14',1),
-('B15',2),
-('B16',1),
-('B17',1),
-('B18',1),
-('B19',1),
-('B20',1),
-('B21',1),
-('B22',1),
-('C1',2),
-('C2',2),
-('C3',2),
-('C4',1),
-('C5',0),
-('C6',1),
-('C7',2),
-('C8',1),
-('C9',2),
-('C10',1),
-('C11',2),
-('C13',2),
-('C14',1),
-('C15',0),
-('C16',0),
-('C18',1),
-('C19',0),
-('C21',1),
-('C22',1),
-('D2',2),
-('D3',2),
-('D4',2),
-('D5',0),
-('E1',1),
-('E5',2),
-('F1',2),
-('F5',1),
-('F6',1),
-('G1',4),
-('G2',1),
-('G3',1),
-('G4',2),
-('G5',1),
-('G6',0),
-('G7',1),
-('G8',2),
-('G9',0),
-('G10',2),
-('G11',2),
-('G12',0),
-('G13',2),
-('G14',2),
-('G15',0),
-('G16',2),
-('H1',1),
-('H2',1),
-('H3',1),
-('H4',1),
-('H5',0),
-('H6',1),
-('H7',1),
-('H8',0),
-('H9',1),
-('H10',1),
-('H11',0),
-('H12',1),
-('K1',0),
-('K3',0),
-('K5',0),
-('K6',1),
-('K61',1),
-('K7',0),
-('K8',1),
-('K9',0),
-('K10',0),
-('K11',1),
-('K12',1),
-('K14',0),
-('K16',1),
-('K17',1),
-('K18',1),
-('K19',2),
-('K20',2),
-('L1',2),
-('L3',4),
-('L4',2),
-('L5',2),
-('L6',2),
-('L7',1),
-('L8',1),
-('L9',1),
-('L10',0),
-('L11',1),
-('L12',1),
-('L14',0),
-('L16',1),
-('L18',1),
-('L20',1),
-('L22',0),
-('L23',4),
-('L24',2),
-('L25',1),
-('L26',2),
-('L27',0),
-('L28',2),
-('L29',0),
-('M1',4),
-('M2',4),
-('M3',2),
-('M4',2),
-('M5',2),
-('M6',2),
-('M7',1),
-('M8',1),
-('M9',1),
-('M10',0),
-('M11',1),
-('M12',1),
-('M13',1),
-('M14',0),
-('M16',2),
-('N1',2),
-('N2',2),
-('N3',1),
-('N4',1),
-('N5',0),
-('N6',1),
-('N7',1),
-('N9',1),
-('N11',1),
-('N13',2),
-('N14',1),
-('N15',0),
-('N16',1),
-('N17',4),
-('O1',2),
-('O2',1),
-('O3',1),
-('O31',1),
-('O4',1),
-('O5',1),
-('O6',0),
-('O8',0),
-('O10',0),
-('O14',0),
-('O16',0),
-('O18',0),
-('O20',0),
-('O22',0),
-('O24',1),
-('O25',1),
-('P1',2),
-('P2',0),
-('P3',2),
-('P4',2),
-('X1',1),
-('X2',1),
-('X3',1),
-('X5',0),
-('X6',0),
-('Z1',1),
-('Z2',0),
-('Z3',0),
-('Z4',0),
-('Z5',0),
-('Z6',0),
-('Z7',0),
-('Z8',1)
-)
-UPDATE booth b SET corners=given.corners
-FROM pavilion p, given
-WHERE p.id=b.pavilion_id
-  AND p.fair_id IN (SELECT id FROM fair WHERE LOWER(id) LIKE 'naval%')
-  AND (LEFT(regexp_replace(UPPER(b.code),'[^A-Z0-9]','','g'),1) || LTRIM(SUBSTRING(regexp_replace(UPPER(b.code),'[^A-Z0-9]','','g') FROM 2),'0'))=given.code;
+
+-- Code aliases include A1/A01/A-01, and K61/K061/K06-1.
+-- Values below come from the exhibitor-provided corner list.
+UPDATE booth SET corners = 2
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('A01', 'A1');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('A02', 'A2');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('A03', 'A3');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('A04', 'A4');
+UPDATE booth SET corners = 2
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('A05', 'A5');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('A07', 'A7');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('A08', 'A8');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('A09', 'A9');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('A010', 'A10');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('A010A', 'A10A');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('A011', 'A11');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('A012', 'A12');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('A013', 'A13');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('A015', 'A15');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('A017', 'A17');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('A018', 'A18');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('A019', 'A19');
+UPDATE booth SET corners = 0
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('A020', 'A20');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('A021', 'A21');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('A022', 'A22');
+UPDATE booth SET corners = 2
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('B01', 'B1');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('B02', 'B2');
+UPDATE booth SET corners = 4
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('B03', 'B3');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('B04', 'B4');
+UPDATE booth SET corners = 2
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('B05', 'B5');
+UPDATE booth SET corners = 2
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('B06', 'B6');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('B07', 'B7');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('B08', 'B8');
+UPDATE booth SET corners = 0
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('B081', 'B81');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('B09', 'B9');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('B010', 'B10');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('B011', 'B11');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('B012', 'B12');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('B013', 'B13');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('B014', 'B14');
+UPDATE booth SET corners = 2
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('B015', 'B15');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('B016', 'B16');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('B017', 'B17');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('B018', 'B18');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('B019', 'B19');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('B020', 'B20');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('B021', 'B21');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('B022', 'B22');
+UPDATE booth SET corners = 2
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('C01', 'C1');
+UPDATE booth SET corners = 2
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('C02', 'C2');
+UPDATE booth SET corners = 2
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('C03', 'C3');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('C04', 'C4');
+UPDATE booth SET corners = 0
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('C05', 'C5');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('C06', 'C6');
+UPDATE booth SET corners = 2
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('C07', 'C7');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('C08', 'C8');
+UPDATE booth SET corners = 2
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('C09', 'C9');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('C010', 'C10');
+UPDATE booth SET corners = 2
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('C011', 'C11');
+UPDATE booth SET corners = 2
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('C013', 'C13');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('C014', 'C14');
+UPDATE booth SET corners = 0
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('C015', 'C15');
+UPDATE booth SET corners = 0
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('C016', 'C16');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('C018', 'C18');
+UPDATE booth SET corners = 0
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('C019', 'C19');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('C021', 'C21');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('C022', 'C22');
+UPDATE booth SET corners = 2
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('D02', 'D2');
+UPDATE booth SET corners = 2
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('D03', 'D3');
+UPDATE booth SET corners = 2
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('D04', 'D4');
+UPDATE booth SET corners = 0
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('D05', 'D5');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('E01', 'E1');
+UPDATE booth SET corners = 2
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('E05', 'E5');
+UPDATE booth SET corners = 2
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('F01', 'F1');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('F05', 'F5');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('F06', 'F6');
+UPDATE booth SET corners = 4
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('G01', 'G1');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('G02', 'G2');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('G03', 'G3');
+UPDATE booth SET corners = 2
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('G04', 'G4');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('G05', 'G5');
+UPDATE booth SET corners = 0
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('G06', 'G6');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('G07', 'G7');
+UPDATE booth SET corners = 2
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('G08', 'G8');
+UPDATE booth SET corners = 0
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('G09', 'G9');
+UPDATE booth SET corners = 2
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('G010', 'G10');
+UPDATE booth SET corners = 2
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('G011', 'G11');
+UPDATE booth SET corners = 0
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('G012', 'G12');
+UPDATE booth SET corners = 2
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('G013', 'G13');
+UPDATE booth SET corners = 2
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('G014', 'G14');
+UPDATE booth SET corners = 0
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('G015', 'G15');
+UPDATE booth SET corners = 2
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('G016', 'G16');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('H01', 'H1');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('H02', 'H2');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('H03', 'H3');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('H04', 'H4');
+UPDATE booth SET corners = 0
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('H05', 'H5');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('H06', 'H6');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('H07', 'H7');
+UPDATE booth SET corners = 0
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('H08', 'H8');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('H09', 'H9');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('H010', 'H10');
+UPDATE booth SET corners = 0
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('H011', 'H11');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('H012', 'H12');
+UPDATE booth SET corners = 0
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('K01', 'K1');
+UPDATE booth SET corners = 0
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('K03', 'K3');
+UPDATE booth SET corners = 0
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('K05', 'K5');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('K06', 'K6');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('K061', 'K61');
+UPDATE booth SET corners = 0
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('K07', 'K7');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('K08', 'K8');
+UPDATE booth SET corners = 0
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('K09', 'K9');
+UPDATE booth SET corners = 0
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('K010', 'K10');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('K011', 'K11');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('K012', 'K12');
+UPDATE booth SET corners = 0
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('K014', 'K14');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('K016', 'K16');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('K017', 'K17');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('K018', 'K18');
+UPDATE booth SET corners = 2
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('K019', 'K19');
+UPDATE booth SET corners = 2
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('K020', 'K20');
+UPDATE booth SET corners = 2
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('L01', 'L1');
+UPDATE booth SET corners = 4
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('L03', 'L3');
+UPDATE booth SET corners = 2
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('L04', 'L4');
+UPDATE booth SET corners = 2
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('L05', 'L5');
+UPDATE booth SET corners = 2
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('L06', 'L6');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('L07', 'L7');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('L08', 'L8');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('L09', 'L9');
+UPDATE booth SET corners = 0
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('L010', 'L10');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('L011', 'L11');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('L012', 'L12');
+UPDATE booth SET corners = 0
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('L014', 'L14');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('L016', 'L16');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('L018', 'L18');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('L020', 'L20');
+UPDATE booth SET corners = 0
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('L022', 'L22');
+UPDATE booth SET corners = 4
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('L023', 'L23');
+UPDATE booth SET corners = 2
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('L024', 'L24');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('L025', 'L25');
+UPDATE booth SET corners = 2
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('L026', 'L26');
+UPDATE booth SET corners = 0
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('L027', 'L27');
+UPDATE booth SET corners = 2
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('L028', 'L28');
+UPDATE booth SET corners = 0
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('L029', 'L29');
+UPDATE booth SET corners = 4
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('M01', 'M1');
+UPDATE booth SET corners = 4
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('M02', 'M2');
+UPDATE booth SET corners = 2
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('M03', 'M3');
+UPDATE booth SET corners = 2
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('M04', 'M4');
+UPDATE booth SET corners = 2
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('M05', 'M5');
+UPDATE booth SET corners = 2
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('M06', 'M6');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('M07', 'M7');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('M08', 'M8');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('M09', 'M9');
+UPDATE booth SET corners = 0
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('M010', 'M10');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('M011', 'M11');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('M012', 'M12');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('M013', 'M13');
+UPDATE booth SET corners = 0
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('M014', 'M14');
+UPDATE booth SET corners = 2
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('M016', 'M16');
+UPDATE booth SET corners = 2
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('N01', 'N1');
+UPDATE booth SET corners = 2
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('N02', 'N2');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('N03', 'N3');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('N04', 'N4');
+UPDATE booth SET corners = 0
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('N05', 'N5');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('N06', 'N6');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('N07', 'N7');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('N09', 'N9');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('N011', 'N11');
+UPDATE booth SET corners = 2
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('N013', 'N13');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('N014', 'N14');
+UPDATE booth SET corners = 0
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('N015', 'N15');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('N016', 'N16');
+UPDATE booth SET corners = 4
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('N017', 'N17');
+UPDATE booth SET corners = 2
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('O01', 'O1');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('O02', 'O2');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('O03', 'O3');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('O031', 'O31');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('O04', 'O4');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('O05', 'O5');
+UPDATE booth SET corners = 0
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('O06', 'O6');
+UPDATE booth SET corners = 0
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('O08', 'O8');
+UPDATE booth SET corners = 0
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('O010', 'O10');
+UPDATE booth SET corners = 0
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('O014', 'O14');
+UPDATE booth SET corners = 0
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('O016', 'O16');
+UPDATE booth SET corners = 0
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('O018', 'O18');
+UPDATE booth SET corners = 0
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('O020', 'O20');
+UPDATE booth SET corners = 0
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('O022', 'O22');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('O024', 'O24');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('O025', 'O25');
+UPDATE booth SET corners = 2
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('P01', 'P1');
+UPDATE booth SET corners = 0
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('P02', 'P2');
+UPDATE booth SET corners = 2
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('P03', 'P3');
+UPDATE booth SET corners = 2
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('P04', 'P4');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('X01', 'X1');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('X02', 'X2');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('X03', 'X3');
+UPDATE booth SET corners = 0
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('X05', 'X5');
+UPDATE booth SET corners = 0
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('X06', 'X6');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('Z01', 'Z1');
+UPDATE booth SET corners = 0
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('Z02', 'Z2');
+UPDATE booth SET corners = 0
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('Z03', 'Z3');
+UPDATE booth SET corners = 0
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('Z04', 'Z4');
+UPDATE booth SET corners = 0
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('Z05', 'Z5');
+UPDATE booth SET corners = 0
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('Z06', 'Z6');
+UPDATE booth SET corners = 0
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('Z07', 'Z7');
+UPDATE booth SET corners = 1
+WHERE pavilion_id IN (SELECT p.id FROM pavilion p JOIN fair f ON f.id=p.fair_id WHERE LOWER(f.id) LIKE 'naval%')
+  AND UPPER(REPLACE(REPLACE(code, '-', ''), ' ', '')) IN ('Z08', 'Z8');
