@@ -1026,6 +1026,7 @@ function App() {
       {modal?.type === "budget" && (
         <BudgetModal
           selected={modal.booths || selected}
+          fair={fair}
           busy={busy}
           onClose={() => setModal(null)}
           onContract={(q, options) => { setModal({ type: "commercialWizard", quote: q, options, booths: modal.booths || selected, occupied: (modal.booths || selected).some(b => b.status !== "AVAILABLE" && !b.mine) }); }}
@@ -1083,13 +1084,13 @@ function App() {
         <CommercialWizard quote={modal.quote} options={modal.options}
           booths={modal.booths} occupied={modal.occupied} busy={busy}
           onClose={() => setModal(null)}
-          onSubmit={async (payment, contractData) => {
+          onSubmit={async (payment, contractData, requester) => {
             const req = {
               selection: {...selection(modal.booths, Boolean(modal.options?.assembly)),
                 lot:modal.options?.lot ?? 1, pavilionItems: Boolean(modal.options?.pavilionItems),
                 extras:modal.options?.extras || {},quoteHash:modal.quote.hash,acceptTerms:true},
               requestType:modal.occupied?"WAITLIST":"CONTRACT",
-              payment:modal.occupied?null:payment,contractData,
+              payment:modal.occupied?null:payment,contractData,requester,
             };
             const result=await send("/commercial-requests",req);
             setModal({type:"commercialSent",result,company:portalName(portal)});
@@ -1123,8 +1124,10 @@ function App() {
           onClose={() => setModal(null)}
           onSave={(draft) =>
             run(async () => {
-              if (modal.booth)
+              if (modal.booth) {
                 await send("/admin/booths/" + modal.booth.id, draft, "PUT");
+                if (draft.verified) await send("/admin/booths/" + modal.booth.id + "/verification", {verified:true}, "PUT");
+              }
               else
                 await send(
                   "/admin/pavilions/" + data.pavilion.id + "/booths",
@@ -1132,7 +1135,8 @@ function App() {
                 );
               setModal(null);
               await refresh();
-            }, "Estande salvo.")
+              setSelected([]);
+            }, "Estande salvo e conferência atualizada.")
           }
           onDelete={() =>
             run(async () => {
@@ -1505,8 +1509,18 @@ const BUDGET_EXTRAS = [
   {key:"qr",label:"Coletor de QR Codes",price:446},
   {key:"totem",label:"Logomarca em dois totens",price:4480},
 ];
-const RATE_OPTIONS = [1449,1510,1574,1638];
-function BudgetModal({ selected, busy, onClose, onContract, onError }) {
+const DEFAULT_CATALOG = {lot0:1449,lot1:1510,lot2:1574,lot3:1638,pavilion:67,assembly:332,extinguisher:227,corners:308,energy:681,energyExtra:526,sponsorship:0,doorDeposit:567,signage:1008,palette:1442,social:1640,cord:1888,video:1717,qr:446,totem:4480};
+const PRICING_FIELDS = [
+  ["lot0","Lote 0 · Renovação / m²"],["lot1","Lote 1 / m²"],["lot2","Lote 2 / m²"],["lot3","Lote 3 / m²"],
+  ["pavilion","Itens de pavilhão / m²"],["assembly","Montagem básica / m²"],["extinguisher","Extintor / unidade"],
+  ["corners","Adicional por esquina"],["energy","Energia do estande / KVA"],["energyExtra","Energia adicional / KVA"],
+  ["sponsorship","Patrocínio"],["doorDeposit","Depósito com porta"],["signage","Logomarca na planta"],
+  ["palette","Palestra (40 min)"],["social","Redes sociais"],["cord","Cordão de crachá"],
+  ["video","Vídeo randômico"],["qr","Coletor QR Codes"],["totem","Logomarca em dois totens"]
+];
+function BudgetModal({ selected, fair, busy, onClose, onContract, onError }) {
+  const pricing = {...DEFAULT_CATALOG,...(fair?.pricingCatalog || {})};
+  const rates = [pricing.lot0,pricing.lot1,pricing.lot2,pricing.lot3];
   const occupied = selected.some(b => b.status !== "AVAILABLE" && !b.mine);
   const area = selected.reduce((v,b)=>v + Number(b.area||0),0);
   const mandatoryPavilion = area > 20;
@@ -1524,18 +1538,18 @@ function BudgetModal({ selected, busy, onClose, onContract, onError }) {
     try {const response=await send("/quote",{...selection(selected,options.assembly),...options});setQ(response);if(contract)onContract(response,options);}catch(err){onError(err);}finally{setWaiting(false);}
   }
   useEffect(()=>{calculate();},[lot,pavilionItems,assembly,JSON.stringify(extras)]);
-  const preview=area*RATE_OPTIONS[lot]+(pavilionItems||mandatoryPavilion?area*67:0)+(assembly&&!mandatoryPavilion?area*332:0)+Math.ceil(area/25)*227;
+  const preview=area*rates[lot]+(pavilionItems||mandatoryPavilion?area*pricing.pavilion:0)+(assembly&&!mandatoryPavilion?area*pricing.assembly:0)+Math.ceil(area/25)*pricing.extinguisher;
   return <Modal title="Simulador de orçamento" wide onClose={onClose}>
     <div className="budget-head"><div><span>PROPOSTA COMERCIAL</span><h2>{selected.map(b=>b.code).join(' + ')}</h2><p>{area.toLocaleString('pt-BR')} m² · {selected.length} estande(s)</p></div><div className="budget-head-price"><small>Total calculado</small><strong>{q?money(q.total):money(preview)}</strong></div></div>
     <div className="budget-cols">
-      <section className="budget-section"><h3>01 · Lote de contratação</h3><label className="field">Selecione o lote<select value={lot} onChange={e=>{setQ(null);setLot(+e.target.value)}}>{RATE_OPTIONS.map((rate,i)=><option key={i} value={i}>Lote {i}{i===0?' · Renovação':''} — {money(rate)}/m²</option>)}</select></label><p className="muted">Lote 0 destinado a renovações; confirme elegibilidade com a organização.</p>
-      <h3>02 · Itens obrigatórios</h3><label className="budget-check"><input type="checkbox" checked={pavilionItems||mandatoryPavilion} disabled={mandatoryPavilion} onChange={e=>{setPavilionItems(e.target.checked);setQ(null)}}/> Itens de pavilhão · {money(67)}/m² {mandatoryPavilion&&<small>Obrigatório acima de 20m²</small>}</label>
-      <label className="budget-check"><input type="checkbox" checked={assembly&&!mandatoryPavilion} disabled={mandatoryPavilion} onChange={e=>{setAssembly(e.target.checked);setQ(null)}}/> Montagem básica · {money(332)}/m² {mandatoryPavilion&&<small>Indisponível acima de 20m²</small>}</label>
-      <div className="budget-row"><div>Extintores de incêndio <small>Mínimo: 1 por 25 m²</small></div><strong>{extinguisherMin} × {money(227)}</strong></div>
-      <div className="budget-row"><label>Adicional por esquina · {money(308)}<input type="number" min="0" max="1000" value={extras.corners||0} onChange={e=>update('corners',e.target.value)}/></label></div>
-      <div className="budget-row"><label>Energia do estande (KVA) · {money(681)}<input type="number" min="1" max="1000" value={extras.energy??1} onChange={e=>update('energy',Math.max(1,+e.target.value))}/></label></div>
+      <section className="budget-section"><h3>01 · Lote de contratação</h3><label className="field">Selecione o lote<select value={lot} onChange={e=>{setQ(null);setLot(+e.target.value)}}>{rates.map((rate,i)=><option key={i} value={i}>Lote {i}{i===0?' · Renovação':''} — {money(rate)}/m²</option>)}</select></label><p className="muted">Lote 0 destinado a renovações; confirme elegibilidade com a organização.</p>
+      <h3>02 · Itens obrigatórios</h3><label className="budget-check"><input type="checkbox" checked={pavilionItems||mandatoryPavilion} disabled={mandatoryPavilion} onChange={e=>{setPavilionItems(e.target.checked);setQ(null)}}/> Itens de pavilhão · {money(pricing.pavilion)}/m² {mandatoryPavilion&&<small>Obrigatório acima de 20m²</small>}</label>
+      <label className="budget-check"><input type="checkbox" checked={assembly&&!mandatoryPavilion} disabled={mandatoryPavilion} onChange={e=>{setAssembly(e.target.checked);setQ(null)}}/> Montagem básica · {money(pricing.assembly)}/m² {mandatoryPavilion&&<small>Indisponível acima de 20m²</small>}</label>
+      <div className="budget-row"><div>Extintores de incêndio <small>Mínimo: 1 por 25 m²</small></div><strong>{extinguisherMin} × {money(pricing.extinguisher)}</strong></div>
+      <div className="budget-row"><label>Adicional por esquina · {money(pricing.corners)}<input type="number" min="0" max="1000" value={extras.corners||0} onChange={e=>update('corners',e.target.value)}/></label></div>
+      <div className="budget-row"><label>Energia do estande (KVA) · {money(pricing.energy)}<input type="number" min="1" max="1000" value={extras.energy??1} onChange={e=>update('energy',Math.max(1,+e.target.value))}/></label></div>
       </section>
-      <section className="budget-section"><h3>03 · Itens adicionais</h3><div className="budget-extras">{BUDGET_EXTRAS.map(item=><label key={item.key} className="budget-row"><span>{item.label}<small>{item.price?money(item.price)+' / un.':'Valor mediante negociação'}</small></span><input aria-label={item.label} type="number" min="0" max="1000" value={extras[item.key]||0} onChange={e=>update(item.key,e.target.value)}/></label>)}</div></section>
+      <section className="budget-section"><h3>03 · Itens adicionais</h3><div className="budget-extras">{BUDGET_EXTRAS.map(item=><label key={item.key} className="budget-row"><span>{item.label}<small>{pricing[item.key]?money(pricing[item.key])+' / un.':'Valor mediante negociação'}</small></span><input aria-label={item.label} type="number" min="0" max="1000" value={extras[item.key]||0} onChange={e=>update(item.key,e.target.value)}/></label>)}</div></section>
     </div>
     <div className="budget-summary"><div><strong>Orçamento detalhado</strong><small>{q?'Valores validados pelo servidor':'Calculando valores…'}</small></div>{q&&<><div className="budget-summary-items">{q.lines?.map((line,i)=><div key={i}><span>{line.label}</span><strong>{money(line.total)}</strong></div>)}</div><strong className="budget-total">{money(q.total)}</strong></>}</div>
     {!q?.ready&&<p className="notice">Orçamento sujeito à conferência comercial: a planta ou os preços ainda não estão publicados. O pedido não formaliza uma venda.</p>}
@@ -1587,6 +1601,7 @@ function Quote({ quote }) {
 }
 function CommercialWizard({quote,options,booths,occupied,busy,onClose,onSubmit}) {
   const [step,setStep]=useState(1);
+  const [requester,setRequester]=useState({company:"",name:"",email:"",phone:""});
   const [payment,setPayment]=useState({type:"CASH",dueDay:5,installments:2,twentyPercentNow:false,installmentsFromJanuary:false,customTerms:""});
   const [mode,setMode]=useState("SAME"),[changes,setChanges]=useState("");
   const [details,setDetails]=useState({}),[accepted,setAccepted]=useState(false),[submitting,setSubmitting]=useState(false),[error,setError]=useState("");
@@ -1610,12 +1625,12 @@ function CommercialWizard({quote,options,booths,occupied,busy,onClose,onSubmit})
     [5,10,15,20,25].includes(Number(payment.dueDay)) && (payment.type==="CASH" || (payment.installments>=2 && payment.installments<=36));
   async function submit(){
     setSubmitting(true);setError("");
-    try {await onSubmit(payment,{mode,changes:mode==="CHANGE"?changes:"",newExhibitor:mode==="NEW"?details:{}});}
+    try {await onSubmit(payment,{mode,changes:mode==="CHANGE"?changes:"",newExhibitor:mode==="NEW"?details:{}},requester);}
     catch(e){setError(e.message||"Não foi possível enviar o pedido.");}
     finally {setSubmitting(false);}
   }
   return <Modal title={occupied?"Solicitação de fila de espera":"Pedido de contratação"} wide onClose={onClose}>
-    <div className="commercial-progress"><span className={step===1?"current":""}>1 · Pagamento</span><span className={step===2?"current":""}>2 · Dados contratuais</span><span>3 · Envio</span></div>
+    <div className="commercial-progress"><span className={step===1?"current":""}>1 · Pagamento</span><span className={step===2?"current":""}>2 · Dados contratuais</span><span className={step===3?"current":""}>3 · Dados do solicitante</span><span>4 · Envio</span></div>
     <div className="commercial-intro"><strong>{quote.fair} · {booths.map(x=>x.code).join(" + ")}</strong><span>{money(quote.total)}</span></div>
     {step===1 && <section className="commercial-step"><h3>Escolha suas condições de pagamento</h3>
       <p className="muted">Último vencimento permitido: <strong>{deadline}</strong>. Sujeito à aprovação comercial.</p>
@@ -1639,7 +1654,13 @@ function CommercialWizard({quote,options,booths,occupied,busy,onClose,onSubmit})
       <label className="check"><input type="checkbox" checked={accepted} onChange={e=>setAccepted(e.target.checked)}/>Confirmo que as informações prestadas estão corretas e solicito análise comercial. Estou ciente de que isto não efetua pagamento nem conclui contrato.</label>
       {error&&<div className="notice" role="alert">{error}</div>}
       <div className="commercial-buttons"><button className="button secondary" onClick={()=>setStep(1)}>Voltar</button>
-        <button className="button primary" disabled={!accepted||!validData||busy||submitting} onClick={submit}>{submitting?"Enviando pedido…":occupied?"Enviar pedido de fila de espera":"Enviar pedido de contratação"} <ArrowRight size={16}/></button></div>
+        <button className="button primary" disabled={!accepted||!validData||busy||submitting} onClick={()=>setStep(3)}>Continuar para os dados do solicitante <ArrowRight size={16}/></button></div>
+    </section>}
+    {step===3 && <section className="commercial-step"><h3>Dados do solicitante</h3>
+      <p className="muted">O nome da empresa contratante será exibido na planta e na lista dos estandes após o pedido.</p>
+      <div className="commercial-fields">{[["company","Empresa contratante"],["name","Nome do responsável"],["email","E-mail"],["phone","Telefone"]].map(([key,label])=><label key={key} className="field">{label} *<input required type={key==="email"?"email":key==="phone"?"tel":"text"} maxLength="160" value={requester[key]} onChange={e=>setRequester(prev=>({...prev,[key]:e.target.value}))}/></label>)}</div>
+      {error&&<div className="notice" role="alert">{error}</div>}
+      <div className="commercial-buttons"><button className="button secondary" onClick={()=>setStep(2)}>Voltar</button><button className="button primary" disabled={busy||submitting||Object.values(requester).some(v=>!v.trim())||!/^\S+@\S+\.\S+$/.test(requester.email)} onClick={submit}>{submitting?"Enviando pedido…":occupied?"Enviar pedido de fila de espera":"Enviar pedido de contratação"}<ArrowRight size={16}/></button></div>
     </section>}
   </Modal>;
 }
@@ -2195,6 +2216,7 @@ function Admin({ fairs, busy, run, onClose, refresh, onReceipt }) {
             onSave={(p) =>
               run(async () => {
                 await send("/admin/fairs/" + f.id, p, "PUT");
+                await send("/admin/fairs/" + f.id + "/pricing-catalog", p.catalog, "PUT");
                 await refresh();
               }, "Condições comerciais salvas.")
             }
@@ -2406,48 +2428,41 @@ function Pricing({ fair, busy, onSave }) {
     assemblyRate: fair.assembly_rate,
     fixedFee: fair.fixed_fee,
     taxPercent: fair.tax_percent,
-    reserveHours: fair.reserve_hours,
-    offerHours: fair.offer_hours,
-    terms: fair.terms,
+    reserveDays: Number(fair.reserve_hours)/24,
+    offerDays: Number(fair.offer_hours)/24,
+    catalog: fair.pricingCatalog || {},
   });
   return (
     <form
       className="pricing-form"
       onSubmit={(e) => {
         e.preventDefault();
-        onSave(p);
+        onSave({...p, reserveHours: Math.round(Number(p.reserveDays)*24), offerHours: Math.round(Number(p.offerDays)*24), terms: fair.terms || ""});
       }}
     >
       <h3>{fair.name}</h3>
       <div className="form-grid">
         {[
-          ["rate", "Preço do espaço / m² (R$)"],
-          ["assemblyRate", "Montagem / m² (R$)"],
-          ["fixedFee", "Taxas fixas / contratação (R$)"],
-          ["taxPercent", "Tributos adicionais (%)"],
-          ["reserveHours", "Prazo de reserva (horas)"],
-          ["offerHours", "Preferência da fila (horas)"],
+          ["reserveDays", "Prazo de reserva (dias)"],
+          ["offerDays", "Preferência da fila (dias)"],
         ].map(([k, label]) => (
           <Field
             key={k}
             label={label}
             type="number"
-            step={k.endsWith("Hours") ? "1" : "0.01"}
-            min={k.endsWith("Hours") ? "1" : "0"}
+            step={k.endsWith("Days") ? "0.5" : "0.01"}
+            min={k.endsWith("Days") ? "0.5" : "0"}
             required
             value={p[k]}
             onChange={(e) => setP({ ...p, [k]: Number(e.target.value) })}
           />
         ))}
       </div>
-      <Field label="Condições comerciais, pagamento, itens incluídos, cancelamento e validade">
-        <textarea
-          rows={6}
-          maxLength={20000}
-          value={p.terms}
-          onChange={(e) => setP({ ...p, terms: e.target.value })}
-        />
-      </Field>
+      <h3>Valores da calculadora (R$)</h3>
+      <p className="muted">As alterações são aplicadas à feira selecionada e aos novos orçamentos. Orçamentos já enviados permanecem registrados com seus valores originais.</p>
+      <div className="form-grid">
+        {PRICING_FIELDS.map(([key,label])=><Field key={key} label={label} type="number" min="0" step="0.01" required value={p.catalog[key] ?? DEFAULT_CATALOG[key]} onChange={e=>setP(old=>({...old,catalog:{...old.catalog,[key]:Number(e.target.value)}}))}/>)}
+      </div>
       <label className="check">
         <input
           type="checkbox"
