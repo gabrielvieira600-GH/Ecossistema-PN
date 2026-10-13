@@ -638,6 +638,7 @@ function App() {
                 )}
               </div>
             )}
+            <div className="map-pdf-actions"><button className="button secondary" onClick={()=>exportSectionPdf("Planta atualizada — " + (fair?.name || "Feira") + " — " + (data?.pavilion?.name || ""),document.querySelector(".map-panel"))}><Download size={16}/> Salvar planta atual em PDF</button></div>
             <div className="map-layout">
               <section className="map-panel">
                 <div className="map-toolbar">
@@ -858,20 +859,20 @@ function App() {
                           Unir à minha reserva
                         </button>
                       )}
-                    {selected.every(
-                      (b) => b.status === "RESERVED" && (b.mine || admin),
+                    {selected.length === 1 && selected.every(
+                      (b) => ["RESERVED", "CONTRACTED"].includes(b.status) && (b.mine || admin),
                     ) && (
                       <button
                         className="button danger-outline full"
                         disabled={busy}
                         onClick={() => setModal({ type: "releaseConfirm" })}
                       >
-                        Liberar reserva
+                        Liberar estande
                       </button>
                     )}
                     {selected.length === 1 &&
                       ["RESERVED", "CONTRACTED"].includes(selected[0].status) &&
-                      !selected[0].mine && (
+                      (!selected[0].mine || admin) && (
                         <button className="button primary full" disabled={busy || Boolean(selected[0].queuePosition)}
                           onClick={() => setModal({type:"budget",booths:selected})}>
                           {selected[0].queuePosition ? `Você está na fila (${selected[0].queuePosition}º)` : "Entrar na fila de espera"} <ArrowRight size={16}/>
@@ -1059,7 +1060,7 @@ function App() {
         </Modal>
       )}
       {modal?.type === "releaseConfirm" && (
-        <Modal title="Liberar reserva" onClose={() => setModal(null)}>
+        <Modal title="Liberar estande" onClose={() => setModal(null)}>
           <p>
             Confirma a liberação de {selected.map((b) => b.code).join(" + ")}? A
             primeira empresa da fila receberá a preferência automaticamente.
@@ -1076,7 +1077,7 @@ function App() {
               }, "Reserva liberada.")
             }
           >
-            Confirmar liberação
+            Confirmar liberação deste estande
           </button>
         </Modal>
       )}
@@ -1090,7 +1091,7 @@ function App() {
                 lot:modal.options?.lot ?? 1, pavilionItems: Boolean(modal.options?.pavilionItems),
                 extras:modal.options?.extras || {},quoteHash:modal.quote.hash,acceptTerms:true},
               requestType:modal.occupied?"WAITLIST":"CONTRACT",
-              payment:modal.occupied?null:payment,contractData,requester,
+              payment,contractData,requester,
             };
             const result=await send("/commercial-requests",req);
             setModal({type:"commercialSent",result,company:portalName(portal)});
@@ -1541,6 +1542,28 @@ const PRICING_FIELDS = [
   ["palette","Palestra (40 min)"],["social","Redes sociais"],["cord","Cordão de crachá"],
   ["video","Vídeo randômico"],["qr","Coletor QR Codes"],["totem","Logomarca em dois totens"]
 ];
+function exportSectionPdf(title, element) {
+  if (!element) return;
+  const popup = window.open("", "_blank");
+  if (!popup) { window.alert("Permita pop-ups para salvar o PDF."); return; }
+  const styles = [...document.querySelectorAll('link[rel="stylesheet"],style')].map(node => node.outerHTML).join("\n");
+  const content = element.cloneNode(true);
+  content.querySelectorAll('button,.no-print').forEach(el => el.remove());
+  // Keep the currently selected values visible in printed forms.
+  element.querySelectorAll('input,select,textarea').forEach((origin,i) => {
+    const target = content.querySelectorAll('input,select,textarea')[i];
+    if (!target) return;
+    if (origin.tagName === 'SELECT') {
+      const text = document.createElement('span'); text.textContent = origin.selectedOptions[0]?.textContent || '';target.replaceWith(text);
+    } else if (origin.type === 'checkbox') {target.checked=origin.checked;}
+    else { target.value=origin.value; target.setAttribute('value',origin.value); }
+  });
+  popup.document.open();
+  popup.document.write('<!doctype html><html><head><meta charset="utf-8"><title>' + title.replace(/[<>]/g,'') + '</title>' + styles + '<style>@page{size:A4; margin:12mm}body{margin:0;background:#fff;color:#10293c;-webkit-print-color-adjust:exact;print-color-adjust:exact}.print-sheet{max-width:100%;margin:auto}.print-sheet .budget-cols{display:grid;grid-template-columns:1fr 1fr}.print-sheet .budget-summary{break-inside:avoid}.print-sheet .map-panel{height:auto;overflow:visible}.print-sheet .map-stage{overflow:visible}button{display:none!important}</style></head><body><h2 style="font-family:Arial,sans-serif">'+ title.replace(/[<>]/g,'') +'</h2><main class="print-sheet">'+content.outerHTML+'</main></body></html>');
+  popup.document.close();
+  popup.addEventListener('load',()=>{popup.focus();popup.print();},{once:true});
+}
+
 function BudgetModal({ selected, fair, busy, onClose, onContract, onError }) {
   const pricing = {...DEFAULT_CATALOG,...(fair?.pricingCatalog || {})};
   const rates = [pricing.lot0,pricing.lot1,pricing.lot2,pricing.lot3];
@@ -1565,7 +1588,7 @@ function BudgetModal({ selected, fair, busy, onClose, onContract, onError }) {
   useEffect(()=>{calculate();},[lot,pavilionItems,assembly,JSON.stringify(extras)]);
   const preview=area*rates[lot]+(pavilionItems||mandatoryPavilion?area*pricing.pavilion:0)+(assembly&&!mandatoryPavilion?area*pricing.assembly:0)+Math.ceil(area/25)*pricing.extinguisher + cornerCount*pricing.corners + energyKva*pricing.energy;
   return <Modal title="Simulador de orçamento" wide onClose={onClose}>
-    <div className="budget-head"><div><span>PROPOSTA COMERCIAL</span><h2>{selected.map(b=>b.code).join(' + ')}</h2><p>{area.toLocaleString('pt-BR')} m² · {selected.length} estande(s)</p></div><div className="budget-head-price"><small>Total calculado</small><strong>{q?money(q.total):money(preview)}</strong></div></div>
+    <div id="budget-print-area"><div className="budget-head"><div><span>PROPOSTA COMERCIAL</span><h2>{selected.map(b=>b.code).join(' + ')}</h2><p>{area.toLocaleString('pt-BR')} m² · {selected.length} estande(s)</p></div><div className="budget-head-price"><small>Total calculado</small><strong>{q?money(q.total):money(preview)}</strong></div></div>
     <div className="budget-cols">
       <section className="budget-section"><h3>01 · Lote de contratação</h3><label className="field">Selecione o lote<select value={lot} onChange={e=>{setQ(null);setLot(+e.target.value)}}>{rates.map((rate,i)=><option key={i} value={i}>Lote {i}{i===0?' · Renovação':''} — {money(rate)}/m²</option>)}</select></label><p className="muted">Lote 0 destinado a renovações; confirme elegibilidade com a organização.</p>
       <h3>02 · Itens obrigatórios</h3><label className="budget-check"><input type="checkbox" checked={pavilionItems||mandatoryPavilion} disabled={mandatoryPavilion} onChange={e=>{setPavilionItems(e.target.checked);setQ(null)}}/> Itens de pavilhão · {money(pricing.pavilion)}/m² {mandatoryPavilion&&<small>Obrigatório acima de 20m²</small>}</label>
@@ -1577,6 +1600,8 @@ function BudgetModal({ selected, fair, busy, onClose, onContract, onError }) {
       <section className="budget-section"><h3>03 · Itens adicionais</h3><div className="budget-extras">{BUDGET_EXTRAS.map(item=><label key={item.key} className="budget-row"><span>{item.label}<small>{pricing[item.key]?money(pricing[item.key])+' / un.':'Valor mediante negociação'}</small></span><input aria-label={item.label} type="number" min="0" max="1000" value={extras[item.key]||0} onChange={e=>update(item.key,e.target.value)}/></label>)}</div></section>
     </div>
     <div className="budget-summary"><div><strong>Orçamento detalhado</strong><small>{q?'Valores validados pelo servidor':'Calculando valores…'}</small></div>{q&&<><div className="budget-summary-items">{q.lines?.map((line,i)=><div key={i}><span>{line.label}</span><strong>{money(line.total)}</strong></div>)}</div><strong className="budget-total">{money(q.total)}</strong></>}</div>
+    </div>
+    <button className="button secondary full no-print" onClick={()=>exportSectionPdf("Orçamento de estande",document.getElementById("budget-print-area"))}><Download size={16}/> Salvar orçamento em PDF</button>
     {!q?.ready&&<p className="notice">Orçamento sujeito à conferência comercial: a planta ou os preços ainda não estão publicados. O pedido não formaliza uma venda.</p>}
     <button className="button primary full" disabled={busy||waiting||!q || selected.some(b=>!b.area)} onClick={()=>calculate(true)}>{occupied?"Concordar com o orçamento e entrar para a fila de espera":"Concordar com o orçamento e continuar para a contratação"} <ArrowRight size={17}/></button>
     <p className="muted">A solicitação será encaminhada para análise. Nenhum pagamento será cobrado nesta etapa.</p>

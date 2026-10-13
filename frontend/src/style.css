@@ -1907,3 +1907,5 @@ td pre {
 .review-summary-tip{margin-top:12px}
 .map-booth.pending-review polygon{stroke:#eb851d!important;stroke-width:2!important;stroke-dasharray:3 1;vector-effect:non-scaling-stroke}
 @media(max-width:600px){.review-summary{padding:12px}.review-summary-stats{gap:6px}.review-summary-stats>div{padding:9px}.review-summary-stats b{font-size:20px}.review-summary-heading .button{width:100%}}
+
+.map-pdf-actions{display:flex;justify-content:flex-end;padding:8px 0}.map-pdf-actions .button{display:inline-flex;align-items:center;gap:8px}
