@@ -32,7 +32,14 @@ public class Maps {
       BigDecimal fontSize,
       String label,
       String status,
-      boolean verified) {}
+      boolean verified,
+      Integer corners) {
+    public Edit(long version, String code, BigDecimal area, String dimensions,
+        List<List<Double>> geometry, BigDecimal fontSize, String label,
+        String status, boolean verified) {
+      this(version, code, area, dimensions, geometry, fontSize, label, status, verified, 0);
+    }
+  }
 
   public record Pricing(
       long version,
@@ -121,6 +128,7 @@ public class Maps {
             "expires_at",
             "group_id",
             "verified",
+            "corners",
             "version")) out.put(k, b.get(k));
     out.put("geometry", db.points((String) b.get("geometry")));
     out.put("mine", user.id().equals(b.get("owner_id")));
@@ -224,6 +232,8 @@ public class Maps {
     if (e.area() != null
         && (e.area().signum() <= 0 || e.area().compareTo(new BigDecimal("10000")) > 0))
       throw error(HttpStatus.BAD_REQUEST, "Metragem inválida.");
+    if (e.corners() == null || e.corners() < 0 || e.corners() > 20)
+      throw error(HttpStatus.BAD_REQUEST, "Informe de 0 a 20 esquinas.");
     if (e.verified() && e.area() == null)
       throw error(HttpStatus.BAD_REQUEST, "Informe a metragem antes de conferir o estande.");
     if (e.fontSize() == null || e.fontSize().doubleValue() < 2 || e.fontSize().doubleValue() > 30)
@@ -291,8 +301,8 @@ public class Maps {
     String id = id();
     db.sql.update(
         "INSERT INTO"
-            + " booth(id,pavilion_id,code,area,dimensions,geometry,font_size,label,status,verified)"
-            + " VALUES(?,?,?,?,?,?,?,?,?,?)",
+            + " booth(id,pavilion_id,code,area,dimensions,geometry,font_size,label,status,verified,corners)"
+            + " VALUES(?,?,?,?,?,?,?,?,?,?,?)",
         id,
         pavilion,
         edit.code().trim().toUpperCase(Locale.ROOT),
@@ -302,7 +312,8 @@ public class Maps {
         edit.fontSize(),
         edit.label().trim(),
         "AVAILABLE",
-        edit.verified());
+        edit.verified(),
+        edit.corners());
     db.audit(admin.email(), "CRIAR_ESTANDE", id, edit);
     return id;
   }
@@ -334,7 +345,7 @@ public class Maps {
     }
     db.sql.update(
         "UPDATE booth SET"
-            + " code=?,area=?,dimensions=?,geometry=?,font_size=?,label=?,status=?,verified=?,version=version+1"
+            + " code=?,area=?,dimensions=?,geometry=?,font_size=?,label=?,status=?,verified=?,corners=?,version=version+1"
             + " WHERE id=?",
         edit.code().trim().toUpperCase(Locale.ROOT),
         edit.area(),
@@ -346,6 +357,7 @@ public class Maps {
             : edit.label().trim(),
         status,
         edit.verified(),
+        edit.corners(),
         id);
     db.audit(admin.email(), "EDITAR_ESTANDE", id, Map.of("before", b, "after", edit));
   }

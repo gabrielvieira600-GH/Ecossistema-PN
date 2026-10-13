@@ -92,6 +92,7 @@ public class Commerce {
       item.put("code", b.get("code"));
       item.put("area", b.get("area"));
       item.put("version", b.get("version"));
+      item.put("corners", b.get("corners"));
       items.add(item);
     }
     if (area.compareTo(new BigDecimal("20")) > 0 && request.assembly())
@@ -132,6 +133,10 @@ public class Commerce {
       throw error(HttpStatus.BAD_REQUEST, "Montagem básica indisponível para estandes acima de 20 m².");
     int extinguisher = area.divide(new BigDecimal("25"),0,RoundingMode.CEILING).intValue();
     var extras = request.extras() == null ? Map.<String,Integer>of() : request.extras();
+    int cornerCount = booths.stream().mapToInt(b -> ((Number)b.get("corners")).intValue()).sum();
+    if (extras.containsKey("corners") && extras.get("corners") != cornerCount)
+      throw error(HttpStatus.CONFLICT, "Quantidade de esquinas alterada. Atualize o orçamento.");
+    BigDecimal energyKva = area.multiply(new BigDecimal("0.08"));
     Map<String,String> names = Map.ofEntries(
       Map.entry("corners","Adicional por esquina"), Map.entry("energy","Energia do estande (KVA)"),
       Map.entry("energyExtra","Energia adicional"), Map.entry("sponsorship","Patrocínio a combinar"),
@@ -159,13 +164,19 @@ public class Commerce {
     lines.add(Map.of("label","Extintores obrigatórios ("+extinguisher+")","total",extinct));
     BigDecimal additional=BigDecimal.ZERO;
     for (var entry : prices.entrySet()) {
-      int units=extras.getOrDefault(entry.getKey(),entry.getKey().equals("energy")?1:0);
+      if (entry.getKey().equals("corners") || entry.getKey().equals("energy")) continue;
+      int units=extras.getOrDefault(entry.getKey(),0);
       if(units<0 || units>1000 || (entry.getKey().equals("energy") && units<1))
         throw error(HttpStatus.BAD_REQUEST,"Quantidade adicional inválida.");
       BigDecimal value=entry.getValue().multiply(new BigDecimal(units));
       if(units>0) lines.add(Map.of("label",names.get(entry.getKey())+" ("+units+")","total",value));
       additional=additional.add(value);
     }
+    BigDecimal cornerTotal = money(commercialRates.get("corners").multiply(BigDecimal.valueOf(cornerCount)));
+    BigDecimal energyTotal = money(commercialRates.get("energy").multiply(energyKva));
+    lines.add(Map.of("label","Esquinas ("+cornerCount+")","total",cornerTotal));
+    lines.add(Map.of("label","Energia do estande ("+energyKva.stripTrailingZeros().toPlainString()+" kVA)","total",energyTotal));
+    additional = additional.add(cornerTotal).add(energyTotal);
     BigDecimal fee=BigDecimal.ZERO;
     BigDecimal subtotal = space.add(mounting).add(pavilionTotal).add(extinct).add(additional);
     BigDecimal tax=BigDecimal.ZERO;
@@ -182,6 +193,8 @@ public class Commerce {
     quote.put("pavilionItems",pavilionItemsRequired);
     quote.put("lines",lines);
     quote.put("extras",extras);
+    quote.put("corners",cornerCount);
+    quote.put("energyKva",energyKva);
     quote.put("space", space);
     quote.put("assemblyRate", commercialRates.get("assembly"));
     quote.put("assembly", assembly);
