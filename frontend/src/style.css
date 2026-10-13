@@ -1890,3 +1890,20 @@ td pre {
 .status-pill.CONTRACTED { background: #fff0e4; color: #a94b09; }
 .map-booth.CONTRACTED polygon { fill: #ffbb80; }
 .status-dot.CONTRACTED { background: #f97316; }
+
+/* Atualização 05: conferência de estandes, restrita à visão administrativa */
+.review-summary{border:1px solid #d5e6e7;border-radius:12px;background:#fff;padding:17px;margin:14px 0;box-shadow:0 5px 20px rgba(11,38,54,.04)}
+.review-summary-heading{display:flex;align-items:center;justify-content:space-between;gap:15px;flex-wrap:wrap}
+.review-summary-heading strong{font-size:15px;color:#103049}
+.review-summary-heading p,.review-summary-tip{font-size:12px;color:#627985;margin:5px 0 0}
+.review-summary-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:15px}
+.review-summary-stats>div{background:#f4f8fa;border-radius:9px;padding:13px;display:flex;flex-direction:column;gap:5px}
+.review-summary-stats b{font-size:24px;color:#123549;line-height:1}
+.review-summary-stats span{font-size:11px;color:#657d8d}
+.review-summary-stats .needs-attention{background:#fff4e8}
+.review-summary-stats .needs-attention b{color:#bc5b15}
+.review-summary-stats .all-reviewed{background:#eaf8f2}
+.review-summary-stats .all-reviewed b{color:#087f62}
+.review-summary-tip{margin-top:12px}
+.map-booth.pending-review polygon{stroke:#eb851d!important;stroke-width:2!important;stroke-dasharray:3 1;vector-effect:non-scaling-stroke}
+@media(max-width:600px){.review-summary{padding:12px}.review-summary-stats{gap:6px}.review-summary-stats>div{padding:9px}.review-summary-stats b{font-size:20px}.review-summary-heading .button{width:100%}}

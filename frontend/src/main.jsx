@@ -150,6 +150,7 @@ function App() {
     [selected, setSelected] = useState([]),
     [query, setQuery] = useState(""),
     [status, setStatus] = useState("ALL"),
+    [pendingOnly, setPendingOnly] = useState(false),
     [modal, setModal] = useState(null),
     [busy, setBusy] = useState(false),
     [toast, setToast] = useState(null),
@@ -165,6 +166,10 @@ function App() {
   const activeUser = useRef(null);
   const admin = user?.role === "ADMIN";
   const currentBooths = data?.booths || [];
+  // Read from the currently loaded pavilion; no second source of truth.
+  const boothNeedsReview = (b) => !b.verified || b.area == null || !Array.isArray(b.geometry) || b.geometry.length < 3;
+  const pendingBooths = currentBooths.filter(boothNeedsReview);
+  const reviewedCount = currentBooths.length - pendingBooths.length;
   function message(text, type = "success") {
     setToast({ text, type });
   }
@@ -268,6 +273,7 @@ function App() {
     const uid = user.id;
     setData(null);
     setFair(f);
+    setPendingOnly(false);
     setPage("map");
     setSelected([]);
     setQuote(null);
@@ -576,6 +582,38 @@ function App() {
                 disponíveis · {currentBooths.length} estandes
               </span>
             </div>
+            {admin && (
+              <section className="review-summary" aria-label="Conferência de estandes da planta">
+                <div className="review-summary-heading">
+                  <div>
+                    <strong>Conferência de estandes · {data.pavilion.name}</strong>
+                    <p>Confira código, área e contorno no PDF antes de marcar cada estande como verificado.</p>
+                  </div>
+                  <button
+                    type="button"
+                    className={"button small " + (pendingOnly ? "primary" : "secondary")}
+                    aria-pressed={pendingOnly}
+                    onClick={() => { setPendingOnly((value) => !value); setStatus("ALL"); setQuery(""); setSelected([]); }}
+                  >
+                    {pendingOnly ? "Mostrar todos" : "Mostrar estandes pendentes"}
+                  </button>
+                </div>
+                <div className="review-summary-stats">
+                  <div><b>{currentBooths.length}</b><span>Total de estandes</span></div>
+                  <div><b>{reviewedCount}</b><span>Verificados</span></div>
+                  <div className={pendingBooths.length ? "needs-attention" : "all-reviewed"}>
+                    <b>{pendingBooths.length}</b><span>Pendentes</span>
+                  </div>
+                </div>
+                {pendingOnly && (
+                  <p className="review-summary-tip" role="status">
+                    {pendingBooths.length
+                      ? "Pendentes destacados na planta e listados à direita. Selecione um estande e use ‘Editar este estande’ para conferir e salvar."
+                      : "Não há estandes pendentes neste pavilhão."}
+                  </p>
+                )}
+              </section>
+            )}
             {!data.pavilion.reviewed && (
               <div className="notice">
                 <ShieldCheck size={17} />
@@ -652,6 +690,7 @@ function App() {
                   selected={selected}
                   query={query}
                   status={status}
+                  pendingOnly={admin && pendingOnly}
                   onPick={(b, multi) => pick(b, multi || multiSelect)}
                   editMode={editMode}
                   onEdit={(b) => setModal({ type: "editor", booth: b })}
@@ -695,6 +734,7 @@ function App() {
                         .filter(
                           (b) =>
                             (status === "ALL" || b.status === status) &&
+                            (!admin || !pendingOnly || boothNeedsReview(b)) &&
                             (b.code + " " + b.label + " " + (b.ownerCompany || ""))
                               .toLowerCase()
                               .includes(query.toLowerCase()),
@@ -1215,6 +1255,7 @@ function MapCanvas({
   selected,
   query,
   status,
+  pendingOnly = false,
   onPick,
   editMode,
   onEdit,
@@ -1248,6 +1289,7 @@ function MapCanvas({
         const sel = selected.some((v) => v.id === b.id),
           filtered =
             (status !== "ALL" && status !== b.status) ||
+            (pendingOnly && !(!b.verified || b.area == null || !Array.isArray(b.geometry) || b.geometry.length < 3)) ||
             !(b.code + " " + b.label + " " + (b.ownerCompany || ""))
               .toLowerCase()
               .includes(query.toLowerCase());
@@ -1260,7 +1302,7 @@ function MapCanvas({
         return (
           <g
             key={b.id}
-            className={"map-booth " + b.status + (sel ? " selected" : "")}
+            className={"map-booth " + b.status + (sel ? " selected" : "") + (pendingOnly && (!b.verified || b.area == null || !Array.isArray(b.geometry) || b.geometry.length < 3) ? " pending-review" : "")}
             opacity={filtered ? 0.16 : 1}
             role="button"
             tabIndex={tool === "select" ? 0 : -1}
