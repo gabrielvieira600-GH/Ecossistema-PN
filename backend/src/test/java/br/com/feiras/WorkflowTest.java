@@ -213,8 +213,12 @@ class WorkflowTest {
         db.encode(List.of(List.of(100, 0), List.of(200, 0), List.of(200, 100), List.of(100, 100))),
         b);
     service.reserve(selection(a, b), u, false);
-    assertThrows(ResponseStatusException.class, () -> service.release(selection(a), u));
-    service.release(selection(a, b), u);
+    // Individual release must not automatically release the other member of a union.
+    service.release(selection(a), u);
+    assertEquals("AVAILABLE", db.one("SELECT status FROM booth WHERE id=?", a).get("status"));
+    assertEquals("RESERVED", db.one("SELECT status FROM booth WHERE id=?", b).get("status"));
+    service.release(selection(b), u);
+    assertEquals("AVAILABLE", db.one("SELECT status FROM booth WHERE id=?", b).get("status"));
   }
 
   @Test
@@ -280,7 +284,13 @@ class WorkflowTest {
         db.sql.queryForObject("SELECT COUNT(*) FROM booth WHERE group_id=?", Integer.class, group));
     var audit = db.one("SELECT * FROM audit_log WHERE action='RESERVAR' AND target=?", group);
     assertTrue(((String) audit.get("details")).contains(e));
-    service.release(selection(a, b, c, d, e), u);
+    // The release endpoint intentionally accepts one booth at a time.
+    assertThrows(ResponseStatusException.class, () -> service.release(selection(a, b, c, d, e), u));
+    service.release(selection(a), u);
+    assertEquals("AVAILABLE", db.one("SELECT status FROM booth WHERE id=?", a).get("status"));
+    for (String boothId : List.of(b, c, d, e))
+      assertEquals("RESERVED", db.one("SELECT status FROM booth WHERE id=?", boothId).get("status"));
+    for (String boothId : List.of(b, c, d, e)) service.release(selection(boothId), u);
     assertEquals(
         5,
         db.sql.queryForObject(
