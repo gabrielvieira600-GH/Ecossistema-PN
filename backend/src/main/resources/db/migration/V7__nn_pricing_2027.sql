@@ -1,0 +1,2 @@
+-- NN Logistica specific 2027 pricing. Navalshore remains unchanged.
+UPDATE fair_pricing_catalog SET prices='{"lot0":930,"lot1":1020,"lot2":1090,"assemblyOcta":350,"assemblyTruss":450,"sponsorMaster":21000,"sponsorPremium":35000,"credential":5000,"lanyard":2000,"balloon":500,"entryBanner":300,"entryPortal":5500,"backdrop":6000,"ledTotem":1000,"qrApp":500,"afterParty":2900,"talk20":1100}' WHERE fair_id='nn-2027';
