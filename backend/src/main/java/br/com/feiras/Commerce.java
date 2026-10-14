@@ -126,6 +126,64 @@ public class Commerce {
       var type = db.json.getTypeFactory().constructMapType(LinkedHashMap.class,String.class,BigDecimal.class);
       commercialRates = db.json.readValue(json,type);
     } catch(Exception ex) { throw new IllegalStateException("Preços comerciais indisponíveis.",ex); }
+    // NN Logística has its own commercial catalogue. Never reuse Navalshore charges.
+    if (fairId.equals("nn-2027")) {
+      if (lot > 2) throw error(HttpStatus.BAD_REQUEST,"A NN Logística possui três faixas de preço (renovação e dois períodos).");
+      if (request.assembly() || Boolean.TRUE.equals(request.pavilionItems()))
+        throw error(HttpStatus.BAD_REQUEST,"Selecione a montagem pelo catálogo próprio da NN Logística.");
+      Map<String,Integer> nnExtras = request.extras()==null ? Map.of() : request.extras();
+      Map<String,String> nnNames = new LinkedHashMap<>();
+      nnNames.put("assemblyOcta","Montagem Octanorm (R$ / m²)");
+      nnNames.put("assemblyTruss","Montagem Truss (R$ / m²)");
+      nnNames.put("sponsorMaster","Patrocínio Master por segmento");
+      nnNames.put("sponsorPremium","Patrocínio Premium VIP por segmento");
+      nnNames.put("credential","Logomarca na credencial");
+      nnNames.put("lanyard","Logomarca em cordão (1.500 un.)");
+      nnNames.put("balloon","Logomarca no balão publicitário");
+      nnNames.put("entryBanner","Banner na entrada");
+      nnNames.put("entryPortal","Logomarca no portal de entrada");
+      nnNames.put("backdrop","Logomarca no backdrop");
+      nnNames.put("ledTotem","Logomarca no totem LED");
+      nnNames.put("qrApp","Aplicativo leitor QR Code");
+      nnNames.put("afterParty","After Party");
+      nnNames.put("talk20","Palestra de 20 minutos");
+      for (String key:nnExtras.keySet()) if (!nnNames.containsKey(key))
+        throw error(HttpStatus.BAD_REQUEST,"Item não disponível na calculadora da NN Logística: "+key);
+      for (var entry:nnExtras.entrySet()) if (entry.getValue()==null || entry.getValue()<0 || entry.getValue()>1000)
+        throw error(HttpStatus.BAD_REQUEST,"Quantidade inválida: "+entry.getKey());
+      int octa = nnExtras.getOrDefault("assemblyOcta",0), truss=nnExtras.getOrDefault("assemblyTruss",0);
+      int master = nnExtras.getOrDefault("sponsorMaster",0), premium=nnExtras.getOrDefault("sponsorPremium",0);
+      if (octa>1 || truss>1 || octa+truss>1 || master>1 || premium>1 || master+premium>1)
+        throw error(HttpStatus.BAD_REQUEST,"Selecione no máximo uma montagem e uma cota de patrocínio.");
+      if (master+premium>0 && area.compareTo(new BigDecimal("27"))<0)
+        throw error(HttpStatus.BAD_REQUEST,"Patrocínio Master/Premium exige estande de pelo menos 27 m².");
+      BigDecimal rateNN=commercialRates.get("lot"+lot);
+      BigDecimal spaceNN=money(area.multiply(rateNN));
+      BigDecimal totalNN=spaceNN;
+      List<Map<String,Object>> nnLines=new ArrayList<>();
+      nnLines.add(Map.of("label",lot==0?"Área livre · Renovação":lot==1?"Área livre · Até 15/01/2027":"Área livre · De 16/01/2027 ao evento","total",spaceNN));
+      for (var entry:nnNames.entrySet()) {
+        int qty=nnExtras.getOrDefault(entry.getKey(),0);
+        if(qty==0) continue;
+        BigDecimal price=commercialRates.get(entry.getKey());
+        if(price==null) throw error(HttpStatus.BAD_REQUEST,"Preço não cadastrado: "+entry.getKey());
+        BigDecimal val=money(price.multiply(BigDecimal.valueOf(qty))
+          .multiply(entry.getKey().startsWith("assembly")?area:BigDecimal.ONE));
+        nnLines.add(Map.of("label",entry.getValue()+(entry.getKey().startsWith("assembly")?" · "+area+" m²":" · "+qty+" un."),"total",val));
+        totalNN=totalNN.add(val);
+      }
+      var nnQuote=new LinkedHashMap<String,Object>();
+      nnQuote.put("fair",fair.get("name"));nnQuote.put("fairId",fairId);
+      nnQuote.put("pavilion",pavilion.get("name"));nnQuote.put("company",user.company());nnQuote.put("userId",user.id());
+      nnQuote.put("items",items);nnQuote.put("area",area);nnQuote.put("rate",rateNN);nnQuote.put("lot",lot);
+      nnQuote.put("lines",nnLines);nnQuote.put("extras",nnExtras);nnQuote.put("space",spaceNN);
+      nnQuote.put("mounting",totalNN.subtract(spaceNN));nnQuote.put("assembly",false);
+      nnQuote.put("total",totalNN);nnQuote.put("ready",ready);nnQuote.put("fairVersion",fair.get("version"));
+      nnQuote.put("reserveHours",fair.get("reserve_hours"));nnQuote.put("terms",fair.get("terms"));
+      nnQuote.put("benefits","5 kVA e Wi-Fi constam da apresentação; confirme condições de fornecimento com a organização.");
+      nnQuote.put("hash",Auth.digest(db.encode(nnQuote)));
+      return nnQuote;
+    }
     BigDecimal rate = commercialRates.get("lot"+lot);
     boolean pavilionItemsRequired = area.compareTo(new BigDecimal("20")) > 0 || Boolean.TRUE.equals(request.pavilionItems());
     boolean assembly = request.assembly();
