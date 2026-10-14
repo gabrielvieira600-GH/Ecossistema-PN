@@ -1030,7 +1030,7 @@ function App() {
           fair={fair}
           busy={busy}
           onClose={() => setModal(null)}
-          onContract={(q, options) => { setModal({ type: "commercialWizard", quote: q, options, booths: modal.booths || selected, occupied: (modal.booths || selected).some(b => b.status !== "AVAILABLE" && !b.mine) }); }}
+          onContract={(q, options) => { setModal({ type: "commercialWizard", quote: q, options, booths: modal.booths || selected, occupied: (modal.booths || selected).some(b => b.status === "CONTRACTED" || (b.status === "RESERVED" && !b.mine)) }); }}
           onError={(err) => message(err.message, "error")}
         />
       )}
@@ -1567,7 +1567,7 @@ function exportSectionPdf(title, element) {
 function BudgetModal({ selected, fair, busy, onClose, onContract, onError }) {
   const pricing = {...DEFAULT_CATALOG,...(fair?.pricingCatalog || {})};
   const rates = [pricing.lot0,pricing.lot1,pricing.lot2,pricing.lot3];
-  const occupied = selected.some(b => b.status !== "AVAILABLE" && !b.mine);
+  const occupied = selected.some(b => b.status === "CONTRACTED" || (b.status === "RESERVED" && !b.mine));
   const area = selected.reduce((v,b)=>v + Number(b.area||0),0);
   const mandatoryPavilion = area > 20;
   const extinguisherMin = Math.ceil(area/25);
@@ -1679,7 +1679,7 @@ function CommercialWizard({quote,options,booths,occupied,busy,onClose,onSubmit})
     catch(e){setError(e.message||"Não foi possível enviar o pedido.");}
     finally {setSubmitting(false);}
   }
-  return <Modal title={occupied?"Solicitação de fila de espera":"Pedido de contratação"} wide onClose={onClose}>
+  return <Modal title={occupied?"Entrada na fila de espera":"Pedido de contratação"} wide onClose={onClose}>
     <div className="commercial-progress"><span className={step===1?"current":""}>1 · Pagamento</span><span className={step===2?"current":""}>2 · Dados contratuais</span><span className={step===3?"current":""}>3 · Dados do solicitante</span><span>4 · Envio</span></div>
     <div className="commercial-intro"><strong>{quote.fair} · {booths.map(x=>x.code).join(" + ")}</strong><span>{money(quote.total)}</span></div>
     {step===1 && <section className="commercial-step"><h3>Escolha suas condições de pagamento</h3>
@@ -1707,10 +1707,10 @@ function CommercialWizard({quote,options,booths,occupied,busy,onClose,onSubmit})
         <button className="button primary" disabled={!accepted||!validData||busy||submitting} onClick={()=>setStep(3)}>Continuar para os dados do solicitante <ArrowRight size={16}/></button></div>
     </section>}
     {step===3 && <section className="commercial-step"><h3>Dados do solicitante</h3>
-      <p className="muted">O nome da empresa contratante será exibido na planta e na lista dos estandes após o pedido.</p>
+      <p className="muted">{occupied ? "Os dados serão vinculados à sua posição na fila de espera. O estande continuará com o expositor atual." : "O nome da empresa contratante será exibido na planta e na lista dos estandes após o pedido."}</p>
       <div className="commercial-fields">{[["company","Empresa contratante"],["name","Nome do responsável"],["email","E-mail"],["phone","Telefone"]].map(([key,label])=><label key={key} className="field">{label} *<input required type={key==="email"?"email":key==="phone"?"tel":"text"} maxLength="160" value={requester[key]} onChange={e=>setRequester(prev=>({...prev,[key]:e.target.value}))}/></label>)}</div>
       {error&&<div className="notice" role="alert">{error}</div>}
-      <div className="commercial-buttons"><button className="button secondary" onClick={()=>setStep(2)}>Voltar</button><button className="button primary" disabled={busy||submitting||Object.values(requester).some(v=>!v.trim())||!/^\S+@\S+\.\S+$/.test(requester.email)} onClick={submit}>{submitting?"Enviando pedido…":occupied?"Enviar pedido de fila de espera":"Enviar pedido de contratação"}<ArrowRight size={16}/></button></div>
+      <div className="commercial-buttons"><button className="button secondary" onClick={()=>setStep(2)}>Voltar</button><button className="button primary" disabled={busy||submitting||Object.values(requester).some(v=>!v.trim())||!/^\S+@\S+\.\S+$/.test(requester.email)} onClick={submit}>{submitting?"Enviando pedido…":occupied?"Entrar na fila de espera":"Enviar pedido de contratação"}<ArrowRight size={16}/></button></div>
     </section>}
   </Modal>;
 }
