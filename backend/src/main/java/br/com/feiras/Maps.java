@@ -134,33 +134,11 @@ public class Maps {
     out.put("mine", user.id().equals(b.get("owner_id")));
     // Public exhibition information only, never reveal owner contact details.
     if (b.get("owner_id") != null && !"AVAILABLE".equals(b.get("status"))) {
-      // The contracting company belongs to the commercial request, not to the login account.
-      // A single administrator account can submit requests for many different exhibitors.
-      String contractingCompany = null;
-      var requests = db.sql.queryForList(
-          "SELECT details FROM commercial_request WHERE user_id=? AND request_type='CONTRACT' "
-              + "AND booth_ids LIKE ? ORDER BY created_at DESC LIMIT 20",
-          b.get("owner_id"), "%\"" + b.get("id") + "\"%");
-      for (var row : requests) {
-        try {
-          var details = db.json.readTree((String) row.get("details"));
-          var requester = details.path("requester");
-          String candidate = requester.path("company").asText("").trim();
-          if (!candidate.isBlank()) {
-            contractingCompany = candidate;
-            break;
-          }
-        } catch (com.fasterxml.jackson.core.JsonProcessingException ex) {
-          // A historical request may have a different JSON format.
-        }
-      }
-      if (contractingCompany == null) {
-        String label = Objects.toString(b.get("label"), "").trim();
-        if (!label.isBlank() && !label.equalsIgnoreCase("Organização"))
-          contractingCompany = label;
-      }
-      if (contractingCompany == null) {
-        var holder=db.sql.queryForList("SELECT company FROM app_user WHERE id=?", b.get("owner_id"));
+      // The booth label is the authoritative current exhibitor. Historical
+      // commercial requests must never override a later queue promotion.
+      String contractingCompany = Objects.toString(b.get("label"), "").trim();
+      if (contractingCompany.isBlank() || contractingCompany.equalsIgnoreCase("Organização")) {
+        var holder = db.sql.queryForList("SELECT company FROM app_user WHERE id=?", b.get("owner_id"));
         contractingCompany = holder.isEmpty() ? "Expositor" : Objects.toString(holder.get(0).get("company"), "Expositor");
       }
       out.put("ownerCompany", contractingCompany);

@@ -342,7 +342,16 @@ public class Commerce {
     String previousOwner = (String)b.get("owner_id");
     String oldGroup = (String)b.get("group_id");
     // Mark only this booth's request as released. Do not affect other booths in the group.
+    // Atomic transition: choose the oldest active queue entry, update the booth,
+    // and consume that entry inside this transaction. No stale owner may remain.
     offerOrFree(boothId);
+    var newBooth = db.one("SELECT owner_id,status,label FROM booth WHERE id=?", boothId);
+    if (Objects.equals(newBooth.get("owner_id"), previousOwner)) {
+      // Admins sometimes register several exhibitors under a single account.
+      // When there was a queue, the legal exhibitor label must still change.
+      if (Objects.equals(newBooth.get("label"), b.get("label")))
+        throw error(HttpStatus.CONFLICT, "A transferência não alterou o expositor. Confira a fila antes de liberar.");
+    }
     if (oldGroup != null)
       db.sql.update("UPDATE booth SET group_id=NULL WHERE id=?",boothId);
     db.notifyUser(previousOwner, "O estande " + b.get("code") + " foi liberado.");
