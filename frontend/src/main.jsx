@@ -165,6 +165,7 @@ function App() {
   const navigation = useRef(0);
   const activeUser = useRef(null);
   const admin = user?.role === "ADMIN";
+  const ActiveBudgetModal = fair?.id === "nn-2027" ? NNBudgetModal : BudgetModal;
   const currentBooths = data?.booths || [];
   // Read from the currently loaded pavilion; no second source of truth.
   const boothNeedsReview = (b) => !b.verified || b.area == null || !Array.isArray(b.geometry) || b.geometry.length < 3;
@@ -1025,7 +1026,7 @@ function App() {
         </Modal>
       )}
       {modal?.type === "budget" && (
-        <BudgetModal
+        <ActiveBudgetModal
           selected={modal.booths || selected}
           fair={fair}
           busy={busy}
@@ -1534,6 +1535,27 @@ const BUDGET_EXTRAS = [
   {key:"totem",label:"Logomarca em dois totens",price:4480},
 ];
 const DEFAULT_CATALOG = {lot0:1449,lot1:1510,lot2:1574,lot3:1638,pavilion:67,assembly:332,extinguisher:227,corners:308,energy:681,energyExtra:526,sponsorship:0,doorDeposit:567,signage:1008,palette:1442,social:1640,cord:1888,video:1717,qr:446,totem:4480};
+const NN_PRICING_FIELDS = [
+  ["lot0","Renovação até 30/09/2026 · R$/m²"],
+  ["lot1","Até 15/01/2027 · R$/m²"],
+  ["lot2","De 16/01/2027 até o evento · R$/m²"],
+  ["assemblyOcta","Montagem Octanorm · R$/m²"],
+  ["assemblyTruss","Montagem Truss · R$/m²"],
+  ["sponsorMaster","Patrocinador Master · pacote"],
+  ["sponsorPremium","Patrocinador Premium VIP · pacote"],
+  ["credential","Logomarca na credencial"],
+  ["lanyard","Logomarca no cordão (1.500 un.)"],
+  ["balloon","Logomarca no balão publicitário"],
+  ["entryBanner","Banner na entrada"],
+  ["entryPortal","Logomarca no portal de entrada"],
+  ["backdrop","Logomarca no backdrop"],
+  ["ledTotem","Logomarca no totem LED"],
+  ["qrApp","Aplicativo leitor QR Code"],
+  ["afterParty","After Party"],
+  ["talk20","Palestra 20 minutos"],
+];
+const NN_DEFAULT_CATALOG = {lot0:930,lot1:1020,lot2:1090,assemblyOcta:350,assemblyTruss:450,sponsorMaster:21000,sponsorPremium:35000,credential:5000,lanyard:2000,balloon:500,entryBanner:300,entryPortal:5500,backdrop:6000,ledTotem:1000,qrApp:500,afterParty:2900,talk20:1100};
+const NN_EXTRAS = NN_PRICING_FIELDS.filter(([k])=>!k.startsWith('lot')).map(([key,label])=>({key,label}));
 const PRICING_FIELDS = [
   ["lot0","Lote 0 · Renovação / m²"],["lot1","Lote 1 / m²"],["lot2","Lote 2 / m²"],["lot3","Lote 3 / m²"],
   ["pavilion","Itens de pavilhão / m²"],["assembly","Montagem básica / m²"],["extinguisher","Extintor / unidade"],
@@ -1562,6 +1584,60 @@ function exportSectionPdf(title, element) {
   popup.document.write('<!doctype html><html><head><meta charset="utf-8"><title>' + title.replace(/[<>]/g,'') + '</title>' + styles + '<style>@page{size:A4; margin:12mm}body{margin:0;background:#fff;color:#10293c;-webkit-print-color-adjust:exact;print-color-adjust:exact}.print-sheet{max-width:100%;margin:auto}.print-sheet .budget-cols{display:grid;grid-template-columns:1fr 1fr}.print-sheet .budget-summary{break-inside:avoid}.print-sheet .map-panel{height:auto;overflow:visible}.print-sheet .map-stage{overflow:visible}button{display:none!important}</style></head><body><h2 style="font-family:Arial,sans-serif">'+ title.replace(/[<>]/g,'') +'</h2><main class="print-sheet">'+content.outerHTML+'</main></body></html>');
   popup.document.close();
   popup.addEventListener('load',()=>{popup.focus();popup.print();},{once:true});
+}
+
+function NNBudgetModal({selected,fair,busy,onClose,onContract,onError}) {
+  const pricing={...NN_DEFAULT_CATALOG,...(fair?.pricingCatalog||{})};
+  const area=selected.reduce((v,b)=>v+Number(b.area||0),0);
+  const occupied=selected.some(b=>b.status!=="AVAILABLE"&&!b.mine);
+  const nnCategory=area>=27?"Diamante (27 m² ou mais)":area>=18&&area<=26?"Ouro (18 a 26 m²)":area>=9&&area<=17?"Prata (9 a 17 m²)":"Faixa a confirmar com o comercial";
+  const [lot,setLot]=useState(1),[extras,setExtras]=useState({}),[q,setQ]=useState(null),[waiting,setWaiting]=useState(false);
+  const rates=[pricing.lot0,pricing.lot1,pricing.lot2];
+  const options={lot,pavilionItems:false,assembly:false,extras};
+  const changeExtra=(key,value)=>{
+    const n=Math.max(0,Math.min(1000,Number(value)||0));
+    setExtras(prev=>{let next={...prev,[key]:n};
+      if(n&&key.startsWith('assembly')) next[key==='assemblyOcta'?'assemblyTruss':'assemblyOcta']=0;
+      if(n&&key.startsWith('sponsor')) next[key==='sponsorMaster'?'sponsorPremium':'sponsorMaster']=0;
+      return next;});setQ(null);
+  };
+  async function calculate(next=false){setWaiting(true);try{
+    const response=await send('/quote',{...selection(selected,false),...options});setQ(response);
+    if(next)onContract(response,options);
+  }catch(e){onError(e)}finally{setWaiting(false)}}
+  useEffect(()=>{calculate()},[lot,JSON.stringify(extras)]);
+  return <Modal title="Simulador de orçamento · NN Logística 2027" wide onClose={onClose}>
+    <div id="nn-budget-print-area">
+      <div className="budget-head"><div><span>PROPOSTA COMERCIAL · NN LOGÍSTICA</span><h2>{selected.map(b=>b.code).join(' + ')}</h2><p>{area.toLocaleString('pt-BR')} m² · {selected.length} estande(s)</p></div><div className="budget-head-price"><small>Total calculado</small><strong>{q?money(q.total):'Calculando…'}</strong></div></div>
+      <div className="budget-cols">
+        <section className="budget-section"><h3>01 · Período de contratação</h3>
+          <label className="field">Tabela de preços<select value={lot} onChange={e=>{setLot(Number(e.target.value));setQ(null)}}>
+            <option value={0}>Renovação até 30/09/2026 — {money(rates[0])}/m²</option>
+            <option value={1}>Até 15/01/2027 — {money(rates[1])}/m²</option>
+            <option value={2}>16/01/2027 até o evento — {money(rates[2])}/m²</option>
+          </select></label>
+          <p className="muted">Renovação destinada a expositores elegíveis, sujeita à confirmação comercial.</p>
+          <h3>02 · Opções de montagem</h3>
+          <label className="field">Escolha a montagem (opcional)<select value={extras.assemblyOcta?"octa":extras.assemblyTruss?"truss":"none"} onChange={e=>{const v=e.target.value;setExtras(x=>({...x,assemblyOcta:v==='octa'?1:0,assemblyTruss:v==='truss'?1:0}));setQ(null)}}>
+            <option value="none">Sem montagem contratada</option><option value="octa">Octanorm — {money(pricing.assemblyOcta)}/m²</option><option value="truss">Truss — {money(pricing.assemblyTruss)}/m²</option>
+          </select></label>
+          <p className="muted">Octanorm: divisórias, mesa, 3 cadeiras, tomada, carpete e testeira. Truss: estrutura de alumínio, lona, mesa, 3 cadeiras, balcão, tomada, iluminação e carpete. Artes fornecidas pelo expositor.</p>
+          <h3>03 · Patrocínio por segmento</h3>
+          <label className="field">Cota de patrocínio<select disabled={area<27} value={extras.sponsorMaster?"master":extras.sponsorPremium?"premium":"none"} onChange={e=>{const v=e.target.value;setExtras(x=>({...x,sponsorMaster:v==='master'?1:0,sponsorPremium:v==='premium'?1:0}));setQ(null)}}>
+            <option value="none">Sem patrocínio</option><option value="master">Master — {money(pricing.sponsorMaster)}</option><option value="premium">Premium VIP — {money(pricing.sponsorPremium)}</option>
+          </select></label><p className="muted">Patrocínios disponíveis para estandes a partir de 27 m², sujeitos à disponibilidade e confirmação comercial.</p>
+        </section>
+        <section className="budget-section"><h3>04 · Divulgação e ações adicionais</h3><div className="budget-extras">{NN_EXTRAS.filter(i=>!i.key.startsWith('assembly')&&!i.key.startsWith('sponsor')).map(item=><label key={item.key} className="budget-row"><span>{item.label}<small>{money(pricing[item.key])} / unidade</small></span><input type="number" min="0" max="1000" value={extras[item.key]||0} onChange={e=>changeExtra(item.key,e.target.value)}/></label>)}</div></section>
+      </div>
+      <div className="notice">Categoria de benefícios indicada pela metragem: <strong>{nnCategory}</strong>. Entre os benefícios apresentados constam publicação no site, mídias sociais, Wi‑Fi e 5 kVA. Patrocínios Master e Premium VIP têm benefícios próprios, sujeitos à confirmação comercial.</div>
+      <p className="muted">A apresentação menciona Wi‑Fi e 5 kVA entre os benefícios, mas não apresenta preços adicionais de energia ou extintores. Esses valores não são cobrados automaticamente nesta calculadora. Os itens promocionais vêm de uma lâmina identificada como Manaus 2026 e devem ser confirmados para a edição de 2027.</p>
+      <div className="budget-summary"><div><strong>Orçamento detalhado · NN Logística</strong><small>{q?'Valores validados pelo servidor':'Calculando…'}</small></div>{q&&<><div className="budget-summary-items">{q.lines?.map((line,i)=><div key={i}><span>{line.label}</span><strong>{money(line.total)}</strong></div>)}</div><strong className="budget-total">{money(q.total)}</strong></>}</div>
+    </div>
+    <button className="button secondary full no-print" onClick={()=>exportSectionPdf('Orçamento NN Logística',document.getElementById('nn-budget-print-area'))}><Download size={16}/> Salvar orçamento em PDF</button>
+    {!q?.ready&&<p className="notice">Este orçamento depende da publicação das condições e da planta.</p>}
+    <button className="button primary full" disabled={waiting||busy||!q||!q.ready||selected.some(b=>!b.area)} onClick={()=>calculate(true)}>{occupied?'Concordar e entrar na fila de espera':'Concordar e continuar para a contratação'} <ArrowRight size={16}/></button>
+    <p className="muted">O envio é uma solicitação sujeita à análise comercial; não formaliza pagamento.</p>
+  </Modal>;
 }
 
 function BudgetModal({ selected, fair, busy, onClose, onContract, onError }) {
@@ -2517,7 +2593,7 @@ function Pricing({ fair, busy, onSave }) {
       <h3>Valores da calculadora (R$)</h3>
       <p className="muted">As alterações são aplicadas à feira selecionada e aos novos orçamentos. Orçamentos já enviados permanecem registrados com seus valores originais.</p>
       <div className="form-grid">
-        {PRICING_FIELDS.map(([key,label])=><Field key={key} label={label} type="number" min="0" step="0.01" required value={p.catalog[key] ?? DEFAULT_CATALOG[key]} onChange={e=>setP(old=>({...old,catalog:{...old.catalog,[key]:Number(e.target.value)}}))}/>)}
+        {(fair.id==="nn-2027" ? NN_PRICING_FIELDS : PRICING_FIELDS).map(([key,label])=><Field key={key} label={label} type="number" min="0" step="0.01" required value={p.catalog[key] ?? (fair.id==="nn-2027" ? NN_DEFAULT_CATALOG[key] : DEFAULT_CATALOG[key])} onChange={e=>setP(old=>({...old,catalog:{...old.catalog,[key]:Number(e.target.value)}}))}/>)}
       </div>
       <label className="check">
         <input
