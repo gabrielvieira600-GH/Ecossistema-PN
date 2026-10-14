@@ -54,7 +54,7 @@ public class Seed implements ApplicationRunner {
             map.get("width").asDouble(),
             map.get("height").asDouble());
         for (var b : map.get("booths")) {
-          String geometry = db.encode(b.get("geometry")), label = b.path("label").asText("");
+          String geometry = db.encode(b.get("geometry")), sourceLabel = b.path("label").asText("");
           db.sql.update(
               "INSERT INTO"
                   + " booth(id,pavilion_id,code,area,dimensions,geometry,source_geometry,font_size,label,source_label,status,verified)"
@@ -67,9 +67,9 @@ public class Seed implements ApplicationRunner {
               geometry,
               geometry,
               b.path("fontSize").asDouble(6),
-              label,
-              label,
-              label.isBlank() ? "AVAILABLE" : "BLOCKED",
+              "",
+              sourceLabel,
+              "AVAILABLE",
               b.path("verified").asBoolean(false));
         }
       }
