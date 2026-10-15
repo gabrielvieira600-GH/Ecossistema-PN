@@ -2347,8 +2347,9 @@ function Admin({ fairs, busy, run, onClose, refresh, onReceipt }) {
             busy={busy}
             onSave={(p) =>
               run(async () => {
-                await send("/admin/fairs/" + f.id, p, "PUT");
+                // Grava o catálogo antes de publicar: o backend valida os preços da NN.
                 await send("/admin/fairs/" + f.id + "/pricing-catalog", p.catalog, "PUT");
+                await send("/admin/fairs/" + f.id, p, "PUT");
                 await refresh();
               }, "Condições comerciais salvas.")
             }
