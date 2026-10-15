@@ -21,7 +21,7 @@ public class MediaRequests {
   final Auth auth;
   @Value("${RESEND_API_KEY:}") String apiKey;
   @Value("${COMMERCIAL_EMAIL_FROM:}") String emailFrom;
-  @Value("${MEDIA_EMAIL_TO:publicidade@portosenavios.com.br}") String emailTo;
+  @Value("${MEDIA_EMAIL_TO:gabriel@portosenavios.com.br}") String emailTo;
 
   public MediaRequests(Db db, Auth auth){ this.db=db; this.auth=auth; }
 
