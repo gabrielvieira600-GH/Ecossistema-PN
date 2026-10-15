@@ -43,6 +43,7 @@ import {
 } from "./map-utils";
 import "./style.css";
 import portosLogo from "./assets/portos.png";
+import PortosMediaPortal from "./PortosMediaPortal";
 import navalLogo from "./assets/navalshore.jpg";
 import nnLogo from "./assets/nn.png";
 
@@ -324,7 +325,7 @@ function App() {
   if (!user)
     return <Login onLogin={(u) => { setPortal(u.portal); setUser(u); }} run={run} busy={busy} toast={toast} />;
   if (portal === "portos")
-    return <PortosPlaceholder user={user} run={run} onLogout={() => { setUser(null); setPortal(null); }} />;
+    return <PortosMediaPortal user={user} run={run} onLogout={() => { setUser(null); setPortal(null); }} />;
   return (
     <div className="app">
       <main>
