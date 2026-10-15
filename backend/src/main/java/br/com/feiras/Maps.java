@@ -413,16 +413,28 @@ public class Maps {
         || p.terms() == null
         || p.terms().length() > 20000)
       throw error(HttpStatus.BAD_REQUEST, "Confira impostos, condições e prazos.");
-    if (p.published() && p.rate().signum() <= 0)
-      throw error(
-          HttpStatus.BAD_REQUEST,
+    // A NN Logística usa seu catálogo próprio de três períodos, não o preço legado.
+    BigDecimal effectiveRate = p.rate();
+    if (id.equals("nn-2027")) {
+      var nnRates = catalog(id);
+      for (String key : List.of("lot0", "lot1", "lot2")) {
+        BigDecimal price = nnRates.get(key);
+        if (p.published() && (price == null || price.signum() <= 0))
+          throw error(HttpStatus.BAD_REQUEST,
+              "Para publicar a NN Logística, preencha os três preços por m² com valores maiores que zero.");
+      }
+      // Mantém o campo antigo coerente para integrações e fluxos existentes.
+      effectiveRate = nnRates.getOrDefault("lot1", p.rate());
+    } else if (p.published() && p.rate().signum() <= 0) {
+      throw error(HttpStatus.BAD_REQUEST,
           "Para publicar, informe um preço base por m² maior que zero.");
+    }
     db.sql.update(
         "UPDATE fair SET"
             + " published=?,rate=?,assembly_rate=?,fixed_fee=?,tax_percent=?,reserve_hours=?,offer_hours=?,terms=?,version=version+1"
             + " WHERE id=?",
         p.published(),
-        p.rate(),
+        effectiveRate,
         p.assemblyRate(),
         p.fixedFee(),
         p.taxPercent(),
