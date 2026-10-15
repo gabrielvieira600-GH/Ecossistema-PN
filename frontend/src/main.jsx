@@ -45,6 +45,8 @@ import "./style.css";
 import portosLogo from "./assets/portos.png";
 import PortosMediaPortal from "./PortosMediaPortal";
 import NNLanding from "./NNLanding";
+import NavalLanding from "./NavalLanding";
+import "./naval-landing.css";
 import navalLogo from "./assets/navalshore.jpg";
 import nnLogo from "./assets/nn.png";
 
@@ -342,7 +344,7 @@ function App() {
             setFair(null);
           }}
         >
-          {portal === "nn" ? <><img className="nn-topbar-logo" src={nnLogo} alt="Logo NN Logística" /><span className="nn-topbar-wordmark"><strong>NN LOGÍSTICA</strong><small>PORTAL DO EXPOSITOR</small></span></> : <><span className="brand-icon"><Anchor /></span><span>EXPO<span className="brand-light">PORTAL</span><small>{portalName(portal)}</small></span></>}
+          {portal === "nn" ? <><img className="nn-topbar-logo" src={nnLogo} alt="Logo NN Logística" /><span className="nn-topbar-wordmark"><strong>NN LOGÍSTICA</strong><small>PORTAL DO EXPOSITOR</small></span></> : portal === "navalshore" ? <><img className="naval-topbar-logo" src={navalLogo} alt="Logo Navalshore" /><span className="naval-topbar-wordmark"><strong>NAVALSHORE</strong><small>PORTAL DO EXPOSITOR</small></span></> : <><span className="brand-icon"><Anchor /></span><span>EXPO<span className="brand-light">PORTAL</span><small>{portalName(portal)}</small></span></>}
         </a>
         
         <button
@@ -427,7 +429,8 @@ function App() {
       </nav>
         </header>
         {page === "home" && portal === "nn" && <NNLanding fair={fairs.find(f=>f.id === "nn-2027") || fairs[0]} onExpose={p=>{const f=fairs.find(f=>f.pavilions?.some(x=>x.id===p.id)); if(f) run(()=>loadMap(f,p));}} onOpenPavilion={p=>{const f=fairs.find(f=>f.pavilions?.some(x=>x.id===p.id));if(f)run(()=>loadMap(f,p));}} />}
-        {page === "home" && portal !== "nn" && (
+        {page === "home" && portal === "navalshore" && <NavalLanding fair={fairs.find(f=>f.id === "navalshore-2027") || fairs.find(f=>belongsToPortal(f,"navalshore"))} onExpose={p=>{const f=fairs.find(f=>f.pavilions?.some(x=>x.id===p.id));if(f)run(()=>loadMap(f,p));}} onOpenPavilion={p=>{const f=fairs.find(f=>f.pavilions?.some(x=>x.id===p.id));if(f)run(()=>loadMap(f,p));}} />}
+        {page === "home" && portal !== "nn" && portal !== "navalshore" && (
           <div className="page home">
             <div className="eyebrow">SEU PRÓXIMO ENCONTRO COMEÇA AQUI</div>
             <h1>Encontre o espaço da sua empresa.</h1>
