@@ -1564,7 +1564,8 @@ const PRICING_FIELDS = [
   ["palette","Palestra (40 min)"],["social","Redes sociais"],["cord","Cordão de crachá"],
   ["video","Vídeo randômico"],["qr","Coletor QR Codes"],["totem","Logomarca em dois totens"]
 ];
-/** Print only the full current map SVG, not the scrollable UI or its toolbars. */
+/** Export the complete live SVG to ONE sheet. Tall Navalshore plans use A4 portrait;
+ * wider event plans use A4 landscape. Do not print page furniture or a title. */
 function exportMapPdf(title, panel) {
   const source = panel?.querySelector('.map-sheet svg');
   if (!source) { window.alert('A planta ainda não está pronta para exportação.'); return; }
@@ -1572,61 +1573,61 @@ function exportMapPdf(title, panel) {
   if (!popup) { window.alert('Permita pop-ups para salvar a planta em PDF.'); return; }
 
   const map = source.cloneNode(true);
-  // Original zoom and scroll must never change the exported map dimensions.
   map.removeAttribute('style');
-  map.setAttribute('width', '100%');
-  map.setAttribute('height', '100%');
   map.setAttribute('preserveAspectRatio', 'xMidYMin meet');
-  // Resolve the backdrop against the application's URL, not about:blank.
+  map.removeAttribute('width');
+  map.removeAttribute('height');
   map.querySelectorAll('image').forEach((img) => {
     const href = img.getAttribute('href') || img.getAttribute('xlink:href');
     if (href) img.setAttribute('href', new URL(href, window.location.href).href);
   });
-  // The imported map is a standalone SVG, so copy only the rules it needs.
   const styles = [...document.querySelectorAll('link[rel="stylesheet"],style')]
     .map((node) => node.outerHTML).join('\n');
+  // The Navalshore shape is portrait-oriented. Using landscape shrinks labels
+  // significantly even when the entire available sheet height is used.
+  const naval = /navalshore/i.test(title);
+  const pageWidth = naval ? 198 : 285;
+  const pageHeight = naval ? 285 : 198;
+  const orientation = naval ? 'portrait' : 'landscape';
   const safeTitle = title.replace(/[<>&"']/g, '');
-  // Use A4 landscape: height is bounded to ONE physical page regardless of
-  // map aspect ratio, viewport zoom, browser scroll position or booth count.
   const printCss = `
-    @page { size: A4 landscape; margin: 8mm; }
-    html, body { width: 281mm; height: 194mm; margin: 0; padding: 0;
-      background: #fff; overflow: hidden; -webkit-print-color-adjust: exact;
-      print-color-adjust: exact; }
-    * { box-sizing: border-box; }
-    .print-map-page { width: 281mm; height: 194mm; overflow: hidden;
-      display: flex; flex-direction: column; page-break-inside: avoid;
-      break-inside: avoid; }
-    .print-map-title { flex: none; margin: 0 0 2mm; padding: 0;
-      height: 9mm; font: 700 15pt/9mm Arial,sans-serif; color: #0b293c; }
-    .print-map-art { flex: none; width: 281mm; height: 181mm;
-      margin: 0; padding: 0; overflow: hidden; }
-    .print-map-art > svg { display: block; width: 281mm !important;
-      height: 181mm !important; max-width: none !important;
-      max-height: none !important; overflow: hidden; }
-    @media print { html,body { margin:0 !important; }
+    @page { size: A4 ${orientation}; margin: 6mm; }
+    html, body { width: ${pageWidth}mm; height: ${pageHeight}mm; margin: 0 !important;
+      padding: 0 !important; background: white; overflow: hidden;
+      -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    *, *::before, *::after { box-sizing: border-box; }
+    .print-map-page { display: block; position: relative; width: ${pageWidth}mm;
+      height: ${pageHeight}mm; overflow: hidden; break-inside: avoid;
+      page-break-inside: avoid; }
+    .print-map-art { position: absolute; inset: 0; display: flex;
+      align-items: flex-start; justify-content: center; overflow: hidden; }
+    .print-map-art > svg { display: block !important;
+      width: 100% !important; height: 100% !important;
+      max-width: 100% !important; max-height: 100% !important;
+      overflow: visible !important; flex-shrink: 0; }
+    @media print { html, body { overflow: hidden !important; }
       .print-map-page { break-after: avoid; page-break-after: avoid; } }
   `;
   popup.document.open();
   popup.document.write('<!doctype html><html><head><meta charset="utf-8"><title>' + safeTitle +
     '</title>' + styles + '<style>' + printCss + '</style></head><body>' +
-    '<main class="print-map-page"><h1 class="print-map-title">' + safeTitle +
-    '</h1><div class="print-map-art">' + map.outerHTML + '</div></main></body></html>');
+    '<main class="print-map-page"><div class="print-map-art">' +
+    map.outerHTML + '</div></main></body></html>');
   popup.document.close();
   popup.addEventListener('load', async () => {
     try { await popup.document.fonts?.ready; } catch (_) { /* optional */ }
-    // Give the external map background time to load before opening the dialog.
-    const image = popup.document.querySelector('.print-map-art svg image');
-    if (image) {
-      const href = image.getAttribute('href');
-      if (href) {
+    const images = [...popup.document.querySelectorAll('.print-map-art svg image')];
+    await Promise.race([
+      Promise.all(images.map((img) => new Promise(resolve => {
+        const href = img.getAttribute('href') || img.getAttribute('xlink:href');
+        if (!href) return resolve();
         const preload = new Image();
-        await Promise.race([
-          new Promise((resolve) => { preload.onload = resolve; preload.onerror = resolve; preload.src = href; }),
-          new Promise((resolve) => setTimeout(resolve, 2500))
-        ]);
-      }
-    }
+        preload.onload = resolve;
+        preload.onerror = resolve;
+        preload.src = href;
+      }))),
+      new Promise(resolve => setTimeout(resolve, 2500))
+    ]);
     popup.focus();
     popup.print();
   }, { once: true });
