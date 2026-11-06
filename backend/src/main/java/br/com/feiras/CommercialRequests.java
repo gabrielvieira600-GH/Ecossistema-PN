@@ -88,12 +88,13 @@ public class CommercialRequests {
     String id=id();
     db.sql.update("INSERT INTO commercial_request(id,fair_id,user_id,booth_ids,request_type,details,status,created_at) VALUES(?,?,?,?,?,?,?,?)",
       id,fairId,user.id(),db.encode(req.ids()),payload.requestType(),db.encode(detail),"PENDING_EMAIL",now());
-    // The booth is occupied as soon as the commercial request is submitted.
-    // The commercial workflow (signature/payment) remains pending independently.
+    // O pedido comercial ocupa provisoriamente o estande: a contratação definitiva
+    // depende de confirmação administrativa da assinatura E do pagamento.
+    // Nunca publicar como CONTRACTED antes dessa confirmação.
     if (payload.requestType().equals("CONTRACT")) {
       String groupId=req.ids().size()>1 ? id() : null;
       for (var booth:booths) {
-        int updated=db.sql.update("UPDATE booth SET status='CONTRACTED', owner_id=?, label=?, "
+        int updated=db.sql.update("UPDATE booth SET status='RESERVED', owner_id=?, label=?, "
             + "expires_at=NULL, group_id=COALESCE(?,group_id), version=version+1 "
             + "WHERE id=? AND (status='AVAILABLE' OR (status='RESERVED' AND owner_id=?))",
             user.id(),requester.company().trim(),groupId,booth.get("id"),user.id());
@@ -105,7 +106,7 @@ public class CommercialRequests {
     boolean mailed=sendEmail(id,detail);
     if(mailed) db.sql.update("UPDATE commercial_request SET status='EMAILED', emailed_at=? WHERE id=?",now(),id);
     return Map.of("id",id,"emailSent",mailed,"message",mailed?
-      "Seu pedido foi enviado para o comercial da "+q.get("fair")+". O estande já está ocupado no mapa, sujeito à formalização comercial.":
+      "Seu pedido foi enviado para o comercial da "+q.get("fair")+". O estande está reservado no mapa e aguarda confirmação administrativa da contratação.":
       "Seu pedido foi registrado, mas o e-mail ainda não foi enviado. A equipe deve verificar a configuração de e-mail.");
   }
   static class StreamRequired {
