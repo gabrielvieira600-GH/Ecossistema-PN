@@ -743,7 +743,7 @@ function App() {
                         )
                         .map((b) => (
                           <button key={b.id} onClick={() => pick(b)} title={`${b.code} · ${b.ownerCompany || "Disponível"} · ${b.queueCount} na fila`}>
-                            <strong>{b.code}{b.ownerCompany && <small className="booth-list-company">{b.ownerCompany}</small>}</strong>
+                            <strong>{b.code}{b.status === "RESERVED" ? <small className="booth-list-company">RESERVADO</small> : b.ownerCompany && <small className="booth-list-company">{b.ownerCompany}</small>}</strong>
                             <span>
                               {b.area == null
                                 ? "Conferir área"
@@ -860,6 +860,15 @@ function App() {
                           Unir à minha reserva
                         </button>
                       )}
+                    {admin && selected.length === 1 && selected[0].status === "RESERVED" && selected[0].owner_id && (
+                      <button
+                        className="button contract full"
+                        disabled={busy}
+                        onClick={() => setModal({ type: "confirmContract", booth: selected[0] })}
+                      >
+                        <Check size={16} /> Confirmar contratação
+                      </button>
+                    )}
                     {selected.length === 1 && selected.every(
                       (b) => ["RESERVED", "CONTRACTED"].includes(b.status) && (b.mine || admin),
                     ) && (
@@ -1059,6 +1068,19 @@ function App() {
             Confirmar reserva
           </button>
         </Modal>
+      )}
+      {modal?.type === "confirmContract" && (
+        <ContractConfirmationModal
+          booth={modal.booth}
+          busy={busy}
+          onClose={() => setModal(null)}
+          onConfirm={() => run(async () => {
+            await send("/admin/booths/" + modal.booth.id + "/confirm-contract", { signed: true, paid: true });
+            setModal(null);
+            setSelected([]);
+            await refresh();
+          }, "Contratação confirmada. Estande atualizado na planta.")}
+        />
       )}
       {modal?.type === "releaseConfirm" && (
         <Modal title="Liberar estande" onClose={() => setModal(null)}>
@@ -1300,7 +1322,8 @@ function MapCanvas({
               .toLowerCase()
               .includes(query.toLowerCase());
         const bb = bounds(b.geometry);
-        const occupant = b.ownerCompany && b.status !== "AVAILABLE" ? String(b.ownerCompany).trim() : "";
+        const occupant = b.ownerCompany && b.status === "CONTRACTED" ? String(b.ownerCompany).trim() : "";
+        const pendingReservation = b.status === "RESERVED";
         const boothWidth = Math.max(1, bb.w);
         const boothHeight = Math.max(1, bb.h);
         // Reserved booths use distinct, non-overlapping regions for code/company/area.
@@ -1323,7 +1346,7 @@ function MapCanvas({
         const compactLines = companyLines.length > 3
           ? [companyLines[0], companyLines[1], companyLines.slice(2).join(" ").slice(0, capacity - 1) + "…"]
           : companyLines;
-        const otherLines = !occupant && b.label
+        const otherLines = !occupant && !pendingReservation && b.label
           ? (b.label.match(/.{1,18}(\s|$)|.{1,18}/g) || [b.label]) : [];
         const font = Number(b.font_size) || 4.5;
         const labels = !original;
@@ -1348,7 +1371,7 @@ function MapCanvas({
             onDoubleClick={() => editMode && onEdit(b)}
           >
             <title>
-              {b.code} · {b.area ?? "?"} m² · {b.ownerCompany ? `Reservado por ${b.ownerCompany}` : statusNames[b.status]} · {b.queueCount} {b.queueCount === 1 ? "expositor" : "expositores"} na fila
+              {b.code} · {b.area ?? "?"} m² · {b.ownerCompany ? `${b.status === "CONTRACTED" ? "Contratado" : "Reservado"} por ${b.ownerCompany}` : statusNames[b.status]} · {b.queueCount} {b.queueCount === 1 ? "expositor" : "expositores"} na fila
             </title>
             <polygon
               points={b.geometry.map((p) => p.join(",")).join(" ")}
@@ -1388,6 +1411,15 @@ function MapCanvas({
                         textAnchor="middle" dominantBaseline="middle"
                         fontSize={Math.min(5.2, boothHeight * 0.12, boothWidth / 6)}
                         fill="#385465">{b.area ?? "?"} m²</text>
+                    </>
+                  ) : pendingReservation ? (
+                    <>
+                      <text x={bb.x + bb.w / 2} y={bb.y + bb.h * 0.24} textAnchor="middle" dominantBaseline="middle"
+                        fontSize={Math.min(6.5, Math.max(2.7, boothWidth / 5), Math.max(2.7, boothHeight / 4))} fontWeight="800" fill="#3d310e">{b.code}</text>
+                      <text x={bb.x + bb.w / 2} y={bb.y + bb.h * 0.54} textAnchor="middle" dominantBaseline="middle"
+                        fontSize={Math.min(5.8, Math.max(2.1, boothWidth / 8.4), Math.max(2.1, boothHeight / 5))} fontWeight="800" fill="#6b4b00">RESERVADO</text>
+                      <text x={bb.x + bb.w / 2} y={bb.y + bb.h * 0.83} textAnchor="middle" dominantBaseline="middle"
+                        fontSize={Math.min(5, boothHeight * 0.13, boothWidth / 7)} fill="#715a28">{b.area ?? "?"} m²</text>
                     </>
                   ) : (
                     <>
@@ -1986,6 +2018,20 @@ function OrderTable({ orders, onOpen }) {
       )}
     </div>
   );
+}
+
+function ContractConfirmationModal({booth,busy,onClose,onConfirm}) {
+  const [signed,setSigned]=useState(false);
+  const [paid,setPaid]=useState(false);
+  return <Modal title="Confirmar contratação" onClose={onClose}>
+    <p>Confirme a formalização da contratação do estande <strong>{booth.code}</strong>, reservado para <strong>{booth.ownerCompany || booth.label || "empresa solicitante"}</strong>.</p>
+    <p className="muted">Essa ação modifica o estande de amarelo (reservado) para laranja (contratado) e passa a exibir o nome da empresa na planta. Não realiza cobrança ou assinatura automaticamente.</p>
+    <label className="check"><input type="checkbox" checked={signed} onChange={e=>setSigned(e.target.checked)}/> Confirmei que o contrato foi assinado.</label>
+    <label className="check"><input type="checkbox" checked={paid} onChange={e=>setPaid(e.target.checked)}/> Confirmei que o pagamento foi realizado.</label>
+    <button className="button contract full" disabled={busy || !signed || !paid} onClick={onConfirm}>
+      <Check size={16}/> Confirmar contratação
+    </button>
+  </Modal>;
 }
 
 function BoothEditor({
